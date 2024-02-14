@@ -3,7 +3,8 @@ import { createHash, createCipheriv, hkdfSync, scryptSync, randomUUID, randomByt
 import { mkdirSync, existsSync, writeFileSync, readFileSync, createReadStream } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { once } from 'node:events'
-import { ethers } from 'ethers'
+import { secp256k1 } from "ethereum-cryptography/secp256k1.js";
+import { hexToBytes, toHex } from "ethereum-cryptography/utils.js";
 
 const chainIds = {1: 'mainnet', 17000: 'holesky'}
 const chainId = process.env.CHAIN ?
@@ -223,7 +224,6 @@ const pubkeyFromPrivkey = (sk) => {
 
 // ERC-2335
 
-const toHex = a => ethers.hexlify(a).slice(2)
 const password = 'Never Gonna Give You Up'
 
 const generateKeystore = ({sk, path, pubkey}) => {
@@ -273,7 +273,7 @@ const generateKeystore = ({sk, path, pubkey}) => {
   return keystore
 }
 
-// addresses are checksummed (ERC-55) hexstrings with the 0x prefix
+// addresses are lowercase hexstrings with the 0x prefix
 // pubkeys are lowercase hexstrings with the 0x prefix
 // timestamps are integers representing seconds since UNIX epoch
 // contents are utf8 encoded unless otherwise specified
@@ -332,7 +332,7 @@ if (process.env.COMMAND == 'test') {
     }
   ]
   for (const [i, {seed, master_SK, child_index, child_SK}] of testCases.entries()) {
-    const seedBytes = ethers.getBytes(seed)
+    const seedBytes = hexToBytes(seed)
     const sk = secretKeyFromSeed(seedBytes)
     const csk = deriveChild(sk, child_index)
     if (sk == master_SK) {
@@ -354,7 +354,7 @@ if (process.env.COMMAND == 'test') {
   ])
   const expectedPubkey = '0x8a0f14c0efe188fbace5b4a72f9e24ce6484b83d2a266837f69f748dafccfdcb12167f5427b7801367a32bf63fdf4783'
   const pubkey = pubkeyFromPrivkey(privkey)
-  const hexPubkey = ethers.hexlify(pubkey)
+  const hexPubkey = `0x${toHex(pubkey)}`
   if (hexPubkey == expectedPubkey)
     console.log(`Test pubkey passed`)
   else {
@@ -363,7 +363,10 @@ if (process.env.COMMAND == 'test') {
   process.exit()
 }
 
-const address = ethers.getAddress(process.env.ADDRESS)
+const address = process.env.ADDRESS
+// TODO:
+// public key will be recovered from signature
+// and address can be derived from that
 
 const getTimestamp = () => Math.floor(Date.now() / 1000)
 
@@ -383,7 +386,7 @@ else if (process.env.COMMAND == 'keygen') {
   let index = startIndex, sk, pubkey, keyPath
   while (true) {
     ({signing: sk} = getValidatorKeys({prefixKey}, index))
-    pubkey = ethers.hexlify(pubkeyFromPrivkey(sk))
+    pubkey = `0x${toHex(pubkeyFromPrivkey(sk))}`
     keyPath = `${dirPath}/${pubkey}`
     if (existsSync(`${keyPath}/log`)) index++
     else break
@@ -425,7 +428,7 @@ else if (process.env.COMMAND == 'keystore') {
   const {signing: sk} = getValidatorKeys({seed}, index)
   const pubkey = process.env.PUBKEY || pubkeyFromPrivkey(sk)
 
-  if (!existsSync(`${dirPath}/${ethers.hexlify(pubkey)}/log`))
+  if (!existsSync(`${dirPath}/${typeof pubkey == 'string' ? pubkey : `0x${toHex(pubkey)}`}/log`))
     throw new Error(`Key at ${index} not generated`)
 
   const ksp = generateKeystore({sk, pubkey, path})
