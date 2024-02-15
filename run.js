@@ -1,16 +1,13 @@
 import { createHash, createCipheriv, hkdfSync, scryptSync, randomUUID, randomBytes } from 'node:crypto'
-import { mkdirSync, existsSync, writeFileSync, readFileSync, createReadStream } from 'node:fs'
+import { mkdirSync, existsSync, realpathSync, writeFileSync, readFileSync, createReadStream } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { once } from 'node:events'
+import { createServer } from 'node:https'
 import { secp256k1 } from "ethereum-cryptography/secp256k1.js";
 import { hexToBytes, toHex } from "ethereum-cryptography/utils.js";
 
 const chainIds = {1: 'mainnet', 17000: 'holesky'}
-const chainId = process.env.CHAIN ?
-  Object.entries(chainIds).find(([k, v]) => [k, v].some(x => x == process.env.CHAIN))?.[0] :
-  1
-const chain = chainIds[chainId]
-console.log(`On chain ${chain}`)
 
 // ERC-2333
 
@@ -277,27 +274,166 @@ const generateKeystore = ({sk, path, pubkey}) => {
 // timestamps are integers representing seconds since UNIX epoch
 // contents are utf8 encoded unless otherwise specified
 //
-// filesystem database layout:
-// db/${chainId}/${address}/init : timestamp
-// db/${chainId}/${address}/seed : 32 bytes (no encoding)
-// db/${chainId}/${address}/${pubkey}/log : JSON lines of log entries
+// we use a git repository for the database
+// the main copy is an append-only bare repository bare
+// the working copy for editing and committing is work
 //
-// the log is an append-only record of user actions
-// log entries have this format:
-// { type: "setFeeRecipient" | "setGraffiti" | "setEnabled" | "keygen" | "exit"
-// , time: timestamp
-// , data: address | string | bool | number | undefined
+// repository database layout:
+// ${chainId}/${address}/init : timestamp
+// ${chainId}/${address}/seed : 32 bytes (no encoding)
+// ${chainId}/${address}/${pubkey}/log : JSON lines of log entries
+//
+// the log is an append-only record of user instructions
+//
+// log entries are the 'instruction' objects described below, with
+// timestamp added to CreateKey and pubkey removed from the others.
+//
+// every change to the database is committed in work and pushed to bare
+// if this succeeds we send back the successful HTTP response
+// then we attempt to follow the instruction (except CreateKey is attempted
+// before the response)
+//
+// HTTP API
+//
+// all the GET requests return application/json content
+//
+// GET /<address>/nextindex
+// number - the next unused key index for address
+//
+// GET /<address>/<pubkey>/depositdata
+// {depositDataRoot: string, signature: string}
+// where depositDataRoot is a 0x-prefixed hexstring of 32 bytes
+// and signature is a 0x-prefixed hexstring
+//
+// GET /<address>/pubkey/<index>
+// string - 0x-prefixed hexstring of the public key at the given index for the
+// given address
+//
+// GET /<address>/<pubkey>/length
+// number - the number of log entries for this address and pubkey
+//
+// GET /<address>/<pubkey>/logs?start&end
+// [<log>...] - log entries, with start and end interpreted as in
+// Array.prototype.slice, with the earliest logs first
+//
+// PUT (CreateKey only) or POST (the rest) /
+// the body content-type should be application/json
+// the body should be JSON in the following format
+//
+// { instruction: <object>, signature: string }
+//
+// where signature is a 0x-prefixed hexstring of an EIP-712 signature over
+// instruction
+//
+// with EIP712Domain = {name: "vrün", version: "1", chainId: <chainId>}
+//
+// the possible instruction types are as follows:
+//
+// struct CreateKey {
+//   uint256 index;
 // }
 //
-// environment variables
-// CHAIN
-// COMMAND
-// ADDRESS
-// PUBKEY
-// DATA
-// INDEX
+// struct SetFeeRecipient {
+//   uint256 timestamp;
+//   bytes pubkey;
+//   address feeRecipient;
+// }
+//
+// struct SetGraffiti {
+//   uint256 timestamp;
+//   bytes pubkey;
+//   string graffiti;
+// }
+//
+// struct SetEnabled {
+//   uint256 timestamp;
+//   bytes pubkey;
+//   bool enabled;
+// }
+//
+// struct Exit {
+//   uint256 timestamp;
+//   bytes pubkey;
+// }
+//
+// For instruction as a JSON object, we use number for uint256, use string
+// (0x-prefixed lowercase hexstring) for bytes and address, and add another
+// property, "type" : string, whose value is the struct name.
+//
+// We recover the sender's address and chainId from the signature (and check it
+// matches the EIP712Domain chainId).
+//
+// Successful responses will have status 200. The body will be empty, except
+// for GetNewKey, where it will contain deposit data JSON.
+//
+// Unsucessful responses will have status 400 or 500 depending on the problem:
+//
+// Any issues with processing the body (wrong content-type, bad signature,
+// malformed instruction, invalid instruction): 400, plus a plain text error
+// message body
+//
+// Any errors raised in processing the request will be relayed back in a plain
+// text body with a 500 response.
 
-const commands = ['init', 'keygen', 'setFeeRecipient', 'setGraffiti', 'setEnabled', 'keystore', 'exit', 'test']
+// Expected setup can be created as follows:
+// git init --bare <bareDir>
+// cd <bareDir>
+// git config receive.denyNonFastForwards true
+// git config receive.denyDeletes true
+// cd -
+// git clone --no-hardlinks <bareDir> <workDir>
+// cd <workDir>
+// git commit --allow-empty -m 'init'
+// git push
+// cd -
+// ln -s <bareDir> ./bare
+// ln -s <workDir> ./work
+
+if (!existsSync('bare'))
+  throw new Error(`bare directory missing`)
+
+const gitCheck = (args, cwd, expectedOutput, msg) => {
+  const res = spawnSync('git', args, {cwd})
+  const checkOutput = typeof expectedOutput == 'string' ? (s => s === expectedOutput) : expectedOutput
+  if (!(res.status === 0 && checkOutput(String(res.stdout))))
+    throw new Error(msg + ` ${res.status} '${res.stdout}' '${res.stderr}'`)
+}
+
+gitCheck(['rev-parse', '--is-bare-repository'], 'bare', 'true\n', 'bare is not a bare git repository')
+
+gitCheck(['config', 'receive.denyNonFastForwards'], 'bare', 'true\n', 'bare does not deny non-fast-forwards')
+gitCheck(['config', 'receive.denyDeletes'], 'bare', 'true\n', 'bare does not deny deletes')
+
+const bareRealPath = realpathSync('bare')
+
+if (!existsSync('work'))
+  throw new Error(`work directory missing`)
+
+gitCheck(['status', '--porcelain'], 'work', '', 'work directory not clean')
+
+gitCheck(['rev-parse', '--abbrev-ref', '@{upstream}'], 'work', 'origin/main\n', 'work upstream not origin/main')
+
+gitCheck(['config', 'remote.origin.url'], 'work',
+  s => realpathSync(s.trim()) === bareRealPath,
+  'work remote is not bare')
+
+// TODO: get certificate, probably using certbot --standalone for acme verification
+// TODO: create https server (at domain db.vrün.com)
+
+console.log('success, exiting')
+process.exit()
+
+// TODO: calculate EIP-712 type hashes for all the messages we might get
+
+// old code below
+
+const chainId = process.env.CHAIN ?
+  Object.entries(chainIds).find(([k, v]) => [k, v].some(x => x == process.env.CHAIN))?.[0] :
+  1
+const chain = chainIds[chainId]
+console.log(`On chain ${chain}`)
+
+const commands = ['init', 'create', 'setFeeRecipient', 'setGraffiti', 'setEnabled', 'keystore', 'exit', 'test']
 
 if (!commands.includes(process.env.COMMAND)) {
   throw new Error(`Unrecognised command ${process.env.COMMAND}. Wanted: ${commands.join(' | ')}`)
@@ -377,7 +513,7 @@ if (process.env.COMMAND == 'init') {
   process.exit()
 }
 
-else if (process.env.COMMAND == 'keygen') {
+else if (process.env.COMMAND == 'create') {
   const dirPath = `db/${chainId}/${address}`
   const seed = new Uint8Array(readFileSync(`${dirPath}/seed`))
   const prefixKey = getPrefixKey(seed)
@@ -390,7 +526,7 @@ else if (process.env.COMMAND == 'keygen') {
     if (existsSync(`${keyPath}/log`)) index++
     else break
   }
-  const log = {type: 'keygen', time: getTimestamp(), data: index}
+  const log = {type: 'create', time: getTimestamp(), data: index}
   mkdirSync(keyPath, {recursive: true})
   writeFileSync(`${keyPath}/log`, `${JSON.stringify(log)}\n`, {flag: 'wx'})
   console.log(`Added pubkey ${pubkey} at index ${index} for ${address} on ${chain}`)
@@ -408,8 +544,8 @@ else if (process.env.COMMAND == 'keystore') {
     let index
     lineReader.once('line', (line) => {
       const {type, data} = JSON.parse(line)
-      if (type != 'keygen')
-        throw new Error(`No keygen in first line of log ${line}`)
+      if (type != 'create')
+        throw new Error(`No create in first line of log ${line}`)
       index = data
       lineReader.close()
     })
