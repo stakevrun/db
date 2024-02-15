@@ -1,9 +1,8 @@
 import { createHash, createCipheriv, hkdfSync, scryptSync, randomUUID, randomBytes } from 'node:crypto'
-import { mkdirSync, existsSync, realpathSync, writeFileSync, readFileSync, createReadStream } from 'node:fs'
+import { mkdirSync, existsSync, realpathSync, readdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { createInterface } from 'node:readline'
 import { once } from 'node:events'
-import { createServer } from 'node:https'
+import { createServer } from 'node:http'
 import { secp256k1 } from "ethereum-cryptography/secp256k1.js";
 import { hexToBytes, toHex } from "ethereum-cryptography/utils.js";
 
@@ -285,38 +284,38 @@ const generateKeystore = ({sk, path, pubkey}) => {
 //
 // the log is an append-only record of user instructions
 //
-// log entries are the 'instruction' objects described below, with
-// timestamp added to CreateKey and pubkey removed from the others.
+// log entries are the 'instruction' objects described below, excluding those
+// using PUT requests, with the pubkey field removed.
 //
 // every change to the database is committed in work and pushed to bare
 // if this succeeds we send back the successful HTTP response
-// then we attempt to follow the instruction (except CreateKey is attempted
+// then we attempt to follow the instruction (except PUT requests are attempted
 // before the response)
 //
 // HTTP API
 //
 // all the GET requests return application/json content
 //
-// GET /<address>/nextindex
+// GET /<chainId>/<address>/nextindex
 // number - the next unused key index for address
 //
-// GET /<address>/<pubkey>/depositdata
+// GET /<chainId>/<address>/<pubkey>/depositdata
 // {depositDataRoot: string, signature: string}
 // where depositDataRoot is a 0x-prefixed hexstring of 32 bytes
 // and signature is a 0x-prefixed hexstring
 //
-// GET /<address>/pubkey/<index>
+// GET /<chainId>/<address>/pubkey/<index>
 // string - 0x-prefixed hexstring of the public key at the given index for the
 // given address
 //
-// GET /<address>/<pubkey>/length
+// GET /<chainId>/<address>/<pubkey>/length
 // number - the number of log entries for this address and pubkey
 //
-// GET /<address>/<pubkey>/logs?start&end
+// GET /<chainId>/<address>/<pubkey>/logs?start&end
 // [<log>...] - log entries, with start and end interpreted as in
 // Array.prototype.slice, with the earliest logs first
 //
-// PUT (CreateKey only) or POST (the rest) /
+// PUT (GenerateSeed, CreateKey) or POST (the rest) /
 // the body content-type should be application/json
 // the body should be JSON in the following format
 //
@@ -328,6 +327,8 @@ const generateKeystore = ({sk, path, pubkey}) => {
 // with EIP712Domain = {name: "vrün", version: "1", chainId: <chainId>}
 //
 // the possible instruction types are as follows:
+//
+// struct GenerateSeed {}
 //
 // struct CreateKey {
 //   uint256 index;
@@ -417,28 +418,97 @@ gitCheck(['config', 'remote.origin.url'], 'work',
   s => realpathSync(s.trim()) === bareRealPath,
   'work remote is not bare')
 
-// TODO: get certificate, probably using certbot --standalone for acme verification
-// TODO: create https server (at domain db.vrün.com)
+const pubkeyRe = i => `(?<pubkey${i}>0x[0-9a-f]{96})`
+const routesRegExp = new RegExp(`^/` +
+  `(?<chainId>[0-9]+)/` +
+  `(?<address>0x[0-9a-f]{40})/(?:` +
+    `(?<i0>nextindex)|` +
+    `${pubkeyRe(1)}/(?<i1>depositdata)|` +
+    `(?<i2>pubkey)/(?<index>[0-9]+)|` +
+    `${pubkeyRe(3)}/(?<i3>length)|` +
+    `${pubkeyRe(4)}/(?<i4>logs)|` +
+  `)$`
+)
 
-console.log('success, exiting')
-process.exit()
+createServer((req, res) => {
+  try {
+    const resHeaders = {'Content-Type': 'application/json'}
+    if (req.method == 'GET') {
+      const url = new URL(req.url, `http://${req.headers.host}`)
+      const path = url.pathname.toLowerCase()
+      const match = routesRegExp.exec(path)
+      if (!match) throw new Error('404:unknown route')
+      const chainId = parseInt(match.groups.chainId)
+      const chain = chainIds[chainId]
+      if (!chain) throw new Error('404:unknown chainId')
+      const address = match.groups.address
+      const addressPath = `work/${chainId}/${address}`
+      if (!existsSync(`${addressPath}/init`)) throw new Error('404:unknown address')
+      if (match.groups.i1 == 'depositdata') {
+        throw new Error('501')
+      }
+      else if (match.groups.i2 == 'pubkey') {
+        const index = parseInt(match.groups.index)
+        if (!(0 <= index)) throw new Error('400:invalid index')
+        const seed = new Uint8Array(readFileSync(`${addressPath}/seed`))
+        const {signing: path} = pathsFromIndex(index)
+        const {signing: sk} = getValidatorKeys({seed}, index)
+        const pubkey = `0x${toHex(pubkeyFromPrivkey(sk))}`
+        if (!existsSync(`${addressPath}/${pubkey}/log`)) throw new Error(`400:unknown index`)
+        resHeaders['Content-Length'] = Buffer.byteLength(pubkey)
+        res.writeHead(200, resHeaders).end(pubkey)
+      }
+      else if (match.groups.i0 = 'nextindex') {
+        const dir = readdirSync(addressPath)
+        if (!(2 <= dir.length)) throw new Error('500:unexpectedly few entries')
+        const body = (dir.length - 2).toString()
+        resHeaders['Content-Length'] = Buffer.byteLength(body)
+        res.writeHead(200, resHeaders).end(body)
+      }
+      else {
+        const pubkey = [3, 4].map(i => match.groups[`pubkey${i}`]).find(x => x)
+        const logPath = `${addressPath}/${pubkey}/log`
+        const logs = JSON.parse(readFileSync(logPath))
+        if (match.groups.i3 == 'length') {
+          const body = logs.length.toString()
+          resHeaders['Content-Length'] = Buffer.byteLength(body)
+          res.writeHead(200, resHeaders).end(body)
+        }
+        else if (match.groups.i4 == 'logs') {
+          const start = url.searchParams.get('start')
+          const endInt = parseInt(url.searchParams.get('end'))
+          const end = Number.isNaN(endInt) ? logs.length : endInt
+          const body = JSON.stringify(logs.slice(start, end))
+          resHeaders['Content-Length'] = Buffer.byteLength(body)
+          res.writeHead(200, resHeaders).end(body)
+        }
+        else {
+          throw new Error('404:unexpected')
+        }
+      }
+    }
+    else if (req.method == 'PUT') {
+      throw new Error('501')
+    }
+    else if (req.method == 'POST') {
+      throw new Error('501')
+    }
+    else {
+      throw new Error('405')
+    }
+  }
+  catch (e) {
+    const [code, message] = e.message.split(':')
+    const statusCode = parseInt(code) || 500
+    res.writeHead(statusCode, message).end()
+  }
+}).listen(8880)
 
 // TODO: calculate EIP-712 type hashes for all the messages we might get
 
 // old code below
 
-const chainId = process.env.CHAIN ?
-  Object.entries(chainIds).find(([k, v]) => [k, v].some(x => x == process.env.CHAIN))?.[0] :
-  1
-const chain = chainIds[chainId]
-console.log(`On chain ${chain}`)
-
-const commands = ['init', 'create', 'setFeeRecipient', 'setGraffiti', 'setEnabled', 'keystore', 'exit', 'test']
-
-if (!commands.includes(process.env.COMMAND)) {
-  throw new Error(`Unrecognised command ${process.env.COMMAND}. Wanted: ${commands.join(' | ')}`)
-}
-
+/*
 if (process.env.COMMAND == 'test') {
   const testCases = [
     {
@@ -497,11 +567,6 @@ if (process.env.COMMAND == 'test') {
   }
   process.exit()
 }
-
-const address = process.env.ADDRESS
-// TODO:
-// public key will be recovered from signature
-// and address can be derived from that
 
 const getTimestamp = () => Math.floor(Date.now() / 1000)
 
@@ -576,3 +641,4 @@ else {
   console.error(`Not implemented yet: ${process.env.COMMAND}`)
   process.exit(1)
 }
+*/
