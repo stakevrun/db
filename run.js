@@ -1,4 +1,3 @@
-import 'dotenv/config'
 import { createHash, createCipheriv, hkdfSync, scryptSync, randomUUID, randomBytes } from 'node:crypto'
 import { mkdirSync, existsSync, writeFileSync, readFileSync, createReadStream } from 'node:fs'
 import { createInterface } from 'node:readline'

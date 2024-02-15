@@ -4,7 +4,6 @@
   "license": "GPL-3.0-or-later",
   "type": "module",
   "dependencies": {
-    "dotenv": "16",
     "ethereum-cryptography": "2"
   }
 }
