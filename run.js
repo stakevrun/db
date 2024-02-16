@@ -300,9 +300,8 @@ const generateKeystore = ({sk, path, pubkey}) => {
 // number - the next unused key index for address
 //
 // GET /<chainId>/<address>/<pubkey>/depositdata
-// {depositDataRoot: string, signature: string}
+// { depositDataRoot: string, signature: { r: string, s: string, v: number } }
 // where depositDataRoot is a 0x-prefixed hexstring of 32 bytes
-// and signature is a 0x-prefixed hexstring
 //
 // GET /<chainId>/<address>/pubkey/<index>
 // string - 0x-prefixed hexstring of the public key at the given index for the
@@ -315,14 +314,15 @@ const generateKeystore = ({sk, path, pubkey}) => {
 // [<log>...] - log entries, with start and end interpreted as in
 // Array.prototype.slice, with the earliest logs first
 //
-// PUT (GenerateSeed, CreateKey) or POST (the rest) /
+// PUT (GenerateSeed, CreateKey) or POST (the rest) /<chainId>
 // the body content-type should be application/json
 // the body should be JSON in the following format
 //
-// { instruction: <object>, signature: string }
+// { type: string, data: <object>,
+//   signature: {r: string, s: string, v: number}
+// }
 //
-// where signature is a 0x-prefixed hexstring of an EIP-712 signature over
-// instruction
+// where the signature is an EIP-712 signature over type{...data}
 //
 // with EIP712Domain = {name: "vrün", version: "1", chainId: <chainId>}
 //
@@ -357,15 +357,14 @@ const generateKeystore = ({sk, path, pubkey}) => {
 //   bytes pubkey;
 // }
 //
-// For instruction as a JSON object, we use number for uint256, use string
-// (0x-prefixed lowercase hexstring) for bytes and address, and add another
-// property, "type" : string, whose value is the struct name.
+// For instruction as a JSON object, we use string for uint256 (suitable to
+// pass to BigInt), and use string (0x-prefixed lowercase hexstring) for bytes
+// and address.
 //
 // We recover the sender's address and chainId from the signature (and check it
 // matches the EIP712Domain chainId).
 //
-// Successful responses will have status 200. The body will be empty, except
-// for GetNewKey, where it will contain deposit data JSON.
+// Successful responses will have status 200 or 201 and empty body.
 //
 // Unsucessful responses will have status 400 or 500 depending on the problem:
 //
