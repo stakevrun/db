@@ -4,7 +4,8 @@ import { spawnSync } from 'node:child_process'
 import { once } from 'node:events'
 import { createServer } from 'node:http'
 import { secp256k1 } from "ethereum-cryptography/secp256k1.js";
-import { hexToBytes, toHex } from "ethereum-cryptography/utils.js";
+import { keccak256 } from "ethereum-cryptography/keccak.js";
+import { hexToBytes, toHex, concatBytes } from "ethereum-cryptography/utils.js";
 
 const chainIds = {1: 'mainnet', 17000: 'holesky'}
 
@@ -297,30 +298,25 @@ const generateKeystore = ({sk, path, pubkey}) => {
 // all the GET requests return application/json content
 //
 // GET /<chainId>/<address>/nextindex
-// number - the next unused key index for address
-//
-// GET /<chainId>/<address>/<pubkey>/depositdata
-// { depositDataRoot: string, signature: { r: string, s: string, v: number } }
-// where depositDataRoot is a 0x-prefixed hexstring of 32 bytes
+// returns: number - the next unused key index for address
 //
 // GET /<chainId>/<address>/pubkey/<index>
-// string - 0x-prefixed hexstring of the public key at the given index for the
-// given address
+// returns: string - 0x-prefixed hexstring of the public key at the given index
+// for the given address
 //
 // GET /<chainId>/<address>/<pubkey>/length
-// number - the number of log entries for this address and pubkey
+// returns: number - the number of log entries for this address and pubkey
 //
 // GET /<chainId>/<address>/<pubkey>/logs?start&end
 // [<log>...] - log entries, with start and end interpreted as in
-// Array.prototype.slice, with the earliest logs first
+// returns: Array.prototype.slice, with the earliest logs first
 //
 // PUT (GenerateSeed, CreateKey) or POST (the rest) /<chainId>
 // the body content-type should be application/json
 // the body should be JSON in the following format
 //
 // { type: string, data: <object>,
-//   signature: {r: string, s: string, v: number}
-// }
+//   signature: {r: string, s: string, v: number} }
 //
 // where the signature is an EIP-712 signature over type{...data}
 //
@@ -332,6 +328,13 @@ const generateKeystore = ({sk, path, pubkey}) => {
 //
 // struct CreateKey {
 //   uint256 index;
+// }
+//
+// struct GetDepositData {
+//   uint256 timestamp;
+//   bytes pubkey;
+//   uint256 amountGwei;
+//   bytes32 withdrawalCredentials;
 // }
 //
 // struct SetFeeRecipient {
@@ -364,7 +367,12 @@ const generateKeystore = ({sk, path, pubkey}) => {
 // We recover the sender's address and chainId from the signature (and check it
 // matches the EIP712Domain chainId).
 //
-// Successful responses will have status 200 or 201 and empty body.
+// Successful responses will have status 200 or 201 and empty body, except for
+// GetDepositData, which has an application/json body in the form
+// { depositDataRoot: string, signature: string }
+// where depositDataRoot is a 0x-prefixed hexstring of 32 bytes, and
+// signature is a 0x-prefixed hexstring encoding a signature over
+// depositDataRoot.
 //
 // Unsucessful responses will have status 400 or 500 depending on the problem:
 //
@@ -422,58 +430,128 @@ const routesRegExp = new RegExp(`^/` +
   `(?<chainId>[0-9]+)/` +
   `(?<address>0x[0-9a-f]{40})/(?:` +
     `(?<i0>nextindex)|` +
-    `${pubkeyRe(1)}/(?<i1>depositdata)|` +
-    `(?<i2>pubkey)/(?<index>[0-9]+)|` +
-    `${pubkeyRe(3)}/(?<i3>length)|` +
-    `${pubkeyRe(4)}/(?<i4>logs)|` +
+    `(?<i1>pubkey)/(?<index>[0-9]+)|` +
+    `${pubkeyRe(2)}/(?<i2>length)|` +
+    `${pubkeyRe(3)}/(?<i3>logs)|` +
   `)$`
 )
 
+const structTypeRegExp = /(?<name>\w+)\((?<args>(?:\w+ \w+(?:,\w+ \w+)*)?)\)/
+const hashStruct = (s, encodedType) => {
+  const typeHash = keccak256(Buffer.from(encodedType))
+  let encodedData
+  if (encodedType == 'string') {
+    encodedData = keccak256(Buffer.from(s))
+  }
+  else if (['uint256','address','bool'].includes(encodedType)) {
+    encodedData = I2OSP(BigInt(s), 32)
+  }
+  else if (encodedType == 'bytes32') {
+    encodedData = hexToBytes(s)
+  }
+  else if (encodedType == 'bytes') {
+    encodedData = keccak256(hexToBytes(s))
+  }
+  else {
+    const match = structTypeRegExp.exec(encodedType)
+    const name = match.groups.name
+    const args = match.groups.args.split(',').map(arg => arg.split(' '))
+    encodedData = new Uint8Array(args.length * 32)
+    for (const [i, [type, name]] of args.entries())
+      encodedData.set(hashStruct(s[name], type), i * 32)
+  }
+  return keccak256(concatBytes(typeHash, encodedData))
+}
+
+const eip712Domain = chainId => ({name: 'vrün', version: '1', chainId})
+const domainSeparators = new Map()
+for (const chainId of Object.keys(chainIds)) {
+  domainSeparators.set(chainId,
+    hashStruct(
+      eip712Domain(chainId),
+      'EIP712Domain(string name,string version,uint256 chainId)'
+    )
+  )
+}
+
+const typesForPUT = new Map()
+typesForPUT.set('GenerateSeed', '()')
+typesForPUT.set('CreateKey', '(uint256 index)')
+
+const typesForPOST = new Map()
+typesForPOST.set('GetDepositData',
+  '(uint256 timestamp,bytes pubkey,uint256 amountGwei,bytes32 withdrawalCredentials)'
+)
+typesForPOST.set('SetFeeRecipient',
+  '(uint256 timestamp,bytes pubkey,address feeRecipient)'
+)
+typesForPOST.set('SetGraffiti',
+  '(uint256 timestamp,bytes pubkey,string graffiti)'
+)
+typesForPOST.set('SetEnabled',
+  '(uint256 timestamp,bytes pubkey,bool enabled)'
+)
+typesForPOST.set('Exit',
+  '(uint256 timestamp,bytes pubkey)'
+)
+
 createServer((req, res) => {
+  function handler(e) {
+    let [code, body] = e.message.split(':', 2)
+    const statusCode = parseInt(code) || 500
+    if (!body && statusCode == 500) body = e.message
+    if (body) {
+      const headers = {
+        'Content-Type': 'text/plain',
+        'Content-Length': Buffer.byteLength(body)
+      }
+      res.writeHead(statusCode, headers).end(body)
+    }
+    else {
+      res.writeHead(statusCode).end()
+    }
+  }
   try {
     const resHeaders = {'Content-Type': 'application/json'}
+    const url = new URL(req.url, `http://${req.headers.host}`)
+    const pathname = url.pathname.toLowerCase()
     if (req.method == 'GET') {
-      const url = new URL(req.url, `http://${req.headers.host}`)
-      const path = url.pathname.toLowerCase()
-      const match = routesRegExp.exec(path)
-      if (!match) throw new Error('404:unknown route')
+      const match = routesRegExp.exec(pathname)
+      if (!match) throw new Error('404:Unknown route')
       const chainId = parseInt(match.groups.chainId)
       const chain = chainIds[chainId]
-      if (!chain) throw new Error('404:unknown chainId')
+      if (!chain) throw new Error('404:Unknown chainId')
       const address = match.groups.address
       const addressPath = `work/${chainId}/${address}`
-      if (!existsSync(`${addressPath}/init`)) throw new Error('404:unknown address')
-      if (match.groups.i1 == 'depositdata') {
-        throw new Error('501')
-      }
-      else if (match.groups.i2 == 'pubkey') {
-        const index = parseInt(match.groups.index)
-        if (!(0 <= index)) throw new Error('400:invalid index')
-        const seed = new Uint8Array(readFileSync(`${addressPath}/seed`))
-        const {signing: path} = pathsFromIndex(index)
-        const {signing: sk} = getValidatorKeys({seed}, index)
-        const pubkey = `0x${toHex(pubkeyFromPrivkey(sk))}`
-        if (!existsSync(`${addressPath}/${pubkey}/log`)) throw new Error(`400:unknown index`)
-        resHeaders['Content-Length'] = Buffer.byteLength(pubkey)
-        res.writeHead(200, resHeaders).end(pubkey)
-      }
-      else if (match.groups.i0 = 'nextindex') {
+      if (!existsSync(`${addressPath}/init`)) throw new Error('404:Unknown address')
+      if (match.groups.i0 = 'nextindex') {
         const dir = readdirSync(addressPath)
-        if (!(2 <= dir.length)) throw new Error('500:unexpectedly few entries')
+        if (!(2 <= dir.length)) throw new Error('500:Unexpectedly few entries')
         const body = (dir.length - 2).toString()
         resHeaders['Content-Length'] = Buffer.byteLength(body)
         res.writeHead(200, resHeaders).end(body)
       }
+      else if (match.groups.i1 == 'pubkey') {
+        const index = parseInt(match.groups.index)
+        if (!(0 <= index)) throw new Error('400:Invalid index')
+        const seed = new Uint8Array(readFileSync(`${addressPath}/seed`))
+        const {signing: path} = pathsFromIndex(index)
+        const {signing: sk} = getValidatorKeys({seed}, index)
+        const pubkey = `0x${toHex(pubkeyFromPrivkey(sk))}`
+        if (!existsSync(`${addressPath}/${pubkey}/log`)) throw new Error(`400:Unknown index`)
+        resHeaders['Content-Length'] = Buffer.byteLength(pubkey)
+        res.writeHead(200, resHeaders).end(pubkey)
+      }
       else {
-        const pubkey = [3, 4].map(i => match.groups[`pubkey${i}`]).find(x => x)
+        const pubkey = [2, 3].map(i => match.groups[`pubkey${i}`]).find(x => x)
         const logPath = `${addressPath}/${pubkey}/log`
         const logs = JSON.parse(readFileSync(logPath))
-        if (match.groups.i3 == 'length') {
+        if (match.groups.i2 == 'length') {
           const body = logs.length.toString()
           resHeaders['Content-Length'] = Buffer.byteLength(body)
           res.writeHead(200, resHeaders).end(body)
         }
-        else if (match.groups.i4 == 'logs') {
+        else if (match.groups.i3 == 'logs') {
           const start = url.searchParams.get('start')
           const endInt = parseInt(url.searchParams.get('end'))
           const end = Number.isNaN(endInt) ? logs.length : endInt
@@ -482,25 +560,52 @@ createServer((req, res) => {
           res.writeHead(200, resHeaders).end(body)
         }
         else {
-          throw new Error('404:unexpected')
+          throw new Error('404:Unexpected route')
         }
       }
     }
     else if (req.method == 'PUT') {
-      throw new Error('501')
+      const [, chainId] = pathname.split('/')
+      if (!domainSeparators.has(chainId)) throw new Error('404:Unknown chainId')
+      const [contentType, charset] = req.headers['content-type']?.split(';') || []
+      if (contentType !== 'application/json')
+        throw new Error('415:Accepts application/json only')
+      if (charset && charset.trim().toLowerCase() !== 'charset=utf-8')
+        throw new Error('415:Accepts charset=utf-8 only')
+      let body
+      req.setEncoding('utf8')
+      req.on('data', chunk => body += chunk)
+      req.on('end', () => {
+        try {
+          if (!body) throw new Error('400:No data')
+          const {type, data, signature: {r, s, v}} = JSON.parse(body)
+          if (!(typesForPUT.has(type))) throw new Error('400:Invalid type')
+          let sig
+          try { sig = new secp256k1.Signature(BigInt(r), BigInt(s), v) }
+          catch (e) { throw new Error(`400:Invalid signature: ${e.message}`) }
+          const domainSeparator = domainSeparators.get(chainId)
+          const message = concatBytes(
+            Buffer.from('\x19\x01'), domainSeparator,
+            hashStruct(data, `${type}${typesForPUT.get(type)}`)
+          )
+          const addressPubkey = sig.recoverPublicKey(keccak256(message))
+          const address = `0x${toHex(keccak256(addressPubkey.toRawBytes()).slice(-20))}`
+          console.log(`Got address ${address}`) // TODO
+          // TODO: verify the signature
+          // TODO: do the put
+          throw new Error('501')
+        }
+        catch (e) { handler(e) }
+      })
     }
     else if (req.method == 'POST') {
-      throw new Error('501')
+      throw new Error('501') // TODO
     }
     else {
       throw new Error('405')
     }
   }
-  catch (e) {
-    const [code, message] = e.message.split(':')
-    const statusCode = parseInt(code) || 500
-    res.writeHead(statusCode, message).end()
-  }
+  catch (e) { handler(e) }
 }).listen(8880)
 
 // TODO: calculate EIP-712 type hashes for all the messages we might get
