@@ -285,8 +285,8 @@ const generateKeystore = ({sk, path, pubkey}) => {
 //
 // the log is an append-only record of user instructions
 //
-// log entries are the 'instruction' objects described below, excluding those
-// using PUT requests, with the pubkey field removed.
+// log entries are the 'instruction' objects described below with the pubkey
+// field removed and a type key added.
 //
 // every change to the database is committed in work and pushed to bare
 // if this succeeds we send back the successful HTTP response
@@ -518,6 +518,18 @@ typesForPOST.set('Exit',
   '(uint256 timestamp,bytes pubkey)'
 )
 
+const getNextIndex = addressPath => {
+  if (!existsSync(`${addressPath}/init`))
+    return null
+  else {
+    const dir = readdirSync(addressPath)
+    if (!(2 <= dir.length)) throw new Error('500:Unexpectedly few entries')
+    return dir.length - 2
+  }
+}
+
+const getTimestamp = () => Math.floor(Date.now() / 1000)
+
 createServer((req, res) => {
   function handler(e) {
     let [code, body] = e.message.split(':', 2)
@@ -553,16 +565,13 @@ createServer((req, res) => {
       if (!chain) throw new Error('404:Unknown chainId')
       const address = match.groups.address
       const addressPath = `work/${chainId}/${address}`
-      // TODO: return 0 in this case for nextindex instead of 404
-      if (!existsSync(`${addressPath}/init`)) throw new Error('404:Unknown address')
       if (match.groups.i0 = 'nextindex') {
-        const dir = readdirSync(addressPath)
-        if (!(2 <= dir.length)) throw new Error('500:Unexpectedly few entries')
-        const body = (dir.length - 2).toString()
+        const body = (+getNextIndex(addressPath)).toString()
         resHeaders['Content-Length'] = Buffer.byteLength(body)
         res.writeHead(200, resHeaders).end(body)
       }
       else if (match.groups.i1 == 'pubkey') {
+        if (!existsSync(`${addressPath}/init`)) throw new Error('404:Unknown address')
         const index = parseInt(match.groups.index)
         if (!(0 <= index)) throw new Error('400:Invalid index')
         const seed = new Uint8Array(readFileSync(`${addressPath}/seed`))
@@ -574,6 +583,7 @@ createServer((req, res) => {
         res.writeHead(200, resHeaders).end(pubkey)
       }
       else {
+        if (!existsSync(`${addressPath}/init`)) throw new Error('404:Unknown address')
         const pubkey = [2, 3].map(i => match.groups[`pubkey${i}`]).find(x => x)
         const logPath = `${addressPath}/${pubkey}/log`
         const logs = JSON.parse(readFileSync(logPath))
@@ -636,14 +646,60 @@ createServer((req, res) => {
           if (pubkeyForKeccak.length != 64) throw new Error(`500:Unexpected pubkey length ${toHex(pubkeyForKeccak)}`)
           const sigAddress = `0x${toHex(keccak256(pubkeyForKeccak).slice(-20))}`
           if (sigAddress !== address) throw new Error(`400:Address mismatch: ${sigAddress}`)
-          // if type == CreateKey
-            // TODO: check that the index is the next index, or a previously created index
-            // TODO: if the index is 0 and not previously created, generate the seed for the user
-            // TODO: if index not previously created:
-            // TODO:   create the key for the user
-            // TODO:   record the log entry for the new pubkey
-            // TODO: return the pubkey as body
-          throw new Error('501')
+          const addressPath = `${chainId}/${address}`
+          const workAddressPath = `work/${addressPath}`
+          if (type == 'CreateKey') {
+            const index = parseInt(data.index)
+            const nextIndex = getNextIndex(workAddressPath)
+            if (!(index <= nextIndex)) throw new Error(`400:Index unknown or not next`)
+            let seed
+            if (nextIndex == null) {
+              seed = randomBytes(32)
+              mkdirSync(workAddressPath, {recursive: true})
+              writeFileSync(`${workAddressPath}/init`, getTimestamp().toString(), {flag: 'wx'})
+              writeFileSync(`${workAddressPath}/seed`, seed, {flag: 'wx'})
+              gitCheck(['add', addressPath], 'work', '', 'could not add seed')
+              gitCheck(['diff', '--staged', '--numstat'], 'work',
+                output => {
+                  const lines = output.split('\n')
+                  return (
+                    lines.length == 2 &&
+                    lines[0].split(/\s+/).join() == `1,0,${addressPath}/init` &&
+                    lines[1].split(/\s+/).join() == `-,-,${addressPath}/seed`
+                  )
+                },
+                'unexpected diff after adding seed'
+              )
+              gitCheck(['commit', '--message', `init ${address}`], 'work', '', 'could not commit seed')
+              gitCheck(['push', '--porcelain'], 'work',
+                output => {
+                  const lines = output.split('\n')
+                  return (
+                    lines.length == 1 &&
+                    lines[0].startsWith('*')
+                  )
+                },
+                'failed to push seed commit'
+              )
+            }
+            const prefixKey = getPrefixKey(seed)
+            const {signing: sk} = getValidatorKeys({prefixKey}, index)
+            const pubkey = `0x${toHex(pubkeyFromPrivkey(sk))}`
+            const workKeyPath = `${workAddressPath}/${pubkey}`
+            const existing = !(nextIndex == null || nextIndex == index)
+            if (nextIndex == null)
+              mkdirSync(workKeyPath, {recursive: true})
+            if (!existing) {
+              const log = {type, ...data}
+              writeFileSync(`${workKeyPath}/log`, `${JSON.stringify(log)}\n`, {flag: 'a'})
+            }
+            const statusCode = existing ? 200 : 201
+            resHeaders['Content-Length'] = Buffer.byteLength(pubkey)
+            res.writeHead(statusCode, resHeaders).end(pubkey)
+          }
+          else {
+            throw new Error('501')
+          }
         }
         catch (e) { handler(e) }
       })
@@ -715,8 +771,6 @@ if (process.env.COMMAND == 'test') {
   }
   process.exit()
 }
-
-const getTimestamp = () => Math.floor(Date.now() / 1000)
 
 if (process.env.COMMAND == 'init') {
   const dirPath = `db/${chainId}/${address}`
