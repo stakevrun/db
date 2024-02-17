@@ -1,0 +1,77 @@
+process.setUncaughtExceptionCaptureCallback((e) => {
+  console.log(`error: ${e.message}`)
+})
+
+import { randomSeed, privkeyFromPath, pubkeyFromPrivkey, generateKeystore } from './sig.js'
+import { gitCheck, gitPush, workDir, chainIds, addressRegExp } from './lib.js'
+import { mkdirSync, existsSync, writeFileSync, readFileSync } from 'node:fs'
+
+// prv repository database layout:
+// ${chainId}/${address} : 32 bytes (no encoding)
+
+// prv: private key management
+// takes environment variables and stdin for input (hexstring) and produces
+// output on stdout
+// input variables:
+// COMMAND = one of ( generate | pubkey | keystore | sign )
+// CHAINID = decimal string identifying the chain
+// ADDRESS = hexstring indicating the seed's owner
+// PATH    = string indicating the path for key derivation
+//
+// generate: ensure the seed for ADDRESS exists, return 'created' or 'exists'
+// pubkey:   return the pubkey (hexstring) for ADDRESS's key at PATH
+// keystore: return a JSON-encoded keystore for ADDRESS's key at PATH
+// sign:     return signature (hexstring) for input data using ADDRESS's key at PATH
+
+if (!addressRegExp.test(process.env.ADDRESS))
+  throw new Error('invalid address')
+
+if (!(process.env.CHAINID in chainIds))
+  throw new Error('invalid chainId')
+
+const address = process.env.ADDRESS
+const chainId = process.env.CHAINID
+const chainPath = `${workDir}/${chainId}`
+const seedPath = `${chainPath}/${address}`
+
+switch (process.env.COMMAND) {
+  case 'generate': {
+    if (existsSync(seedPath))
+      console.log('exists')
+    else {
+      mkdirSync(chainPath)
+      writeFileSync(seedPath, randomSeed(), {flag: 'wx'})
+      gitCheck(['add', seedPath], workDir, '', 'failed to add seed')
+      gitCheck(['diff', '--staged', '--numstat'], workDir,
+        output => (
+          !output.trimEnd().includes('\n') &&
+          output.trimEnd().split(/\s+/).join() == `-,-,${chainId}/${address}`
+        ),
+        'unexpected diff adding seed'
+      )
+      gitPush(address, workDir)
+      console.log('created')
+    }
+    break
+  }
+  case process.env.COMMAND:
+    const seed = readFileSync(seedPath)
+    const sk = privkeyFromPath(seed, process.env.PATH)
+  case 'pubkey': {
+    const pk = pubkeyFromPrivkey(sk)
+    console.log(`0x${toHex(pk)}`)
+    break
+  }
+  case 'keystore': {
+    const pubkey = pubkeyFromPrivkey(sk)
+    const path = process.env.PATH
+    console.log(JSON.stringify(generateKeystore({sk, path, pubkey})
+    break
+  }
+  case 'sign': {
+    throw new Error('sign not implemented yet')
+    break
+  }
+  default:
+    throw new Error('invalid command')
+}
