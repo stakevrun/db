@@ -311,20 +311,18 @@ const generateKeystore = ({sk, path, pubkey}) => {
 // [<log>...] - log entries, with start and end interpreted as in
 // returns: Array.prototype.slice, with the earliest logs first
 //
-// PUT (GenerateSeed, CreateKey) or POST (the rest) /<chainId>
+// PUT (CreateKey) or POST (the rest) /<chainId>/<address>
 // the body content-type should be application/json
 // the body should be JSON in the following format
 //
-// { type: string, data: <object>,
-//   signature: {r: string, s: string, v: number} }
+// { type: string, data: <object>, signature: string }
 //
-// where the signature is an EIP-712 signature over type{...data}
+// where signature is an EIP-712 signature over type{...data}
+// encoded as a compact 0x-prefixed hexstring
 //
 // with EIP712Domain = {name: "vrün", version: "1", chainId: <chainId>}
 //
 // the possible instruction types are as follows:
-//
-// struct GenerateSeed {}
 //
 // struct CreateKey {
 //   uint256 index;
@@ -364,8 +362,7 @@ const generateKeystore = ({sk, path, pubkey}) => {
 // pass to BigInt), and use string (0x-prefixed lowercase hexstring) for bytes
 // and address.
 //
-// We recover the sender's address and chainId from the signature (and check it
-// matches the EIP712Domain chainId).
+// We check the chainId in the URL matches the EIP712Domain chainId.
 //
 // Successful responses will have status 200 or 201 and empty body, except for
 // GetDepositData, which has an application/json body in the form
@@ -425,41 +422,63 @@ gitCheck(['config', 'remote.origin.url'], 'work',
   s => realpathSync(s.trim()) === bareRealPath,
   'work remote is not bare')
 
+const addressRe = '0x[0-9a-f]{40}'
 const pubkeyRe = i => `(?<pubkey${i}>0x[0-9a-f]{96})`
 const routesRegExp = new RegExp(`^/` +
   `(?<chainId>[0-9]+)/` +
-  `(?<address>0x[0-9a-f]{40})/(?:` +
+  `(?<address>${addressRe})/(?:` +
     `(?<i0>nextindex)|` +
     `(?<i1>pubkey)/(?<index>[0-9]+)|` +
     `${pubkeyRe(2)}/(?<i2>length)|` +
     `${pubkeyRe(3)}/(?<i3>logs)|` +
   `)$`
 )
+const addressRegExp = new RegExp(addressRe)
 
+const numberRegExp = /[1-9][0-9]*/
+const hexStringRegExp = /0x[0-9a-f]*/
+const bytes32RegExp = /0x[0-9a-f]{32}/
 const structTypeRegExp = /(?<name>\w+)\((?<args>(?:\w+ \w+(?:,\w+ \w+)*)?)\)/
-const hashStruct = (s, encodedType) => {
-  const typeHash = keccak256(Buffer.from(encodedType))
-  let encodedData
+
+const encodeData = (data, encodedType) => {
   if (encodedType == 'string') {
-    encodedData = keccak256(Buffer.from(s))
-  }
-  else if (['uint256','address','bool'].includes(encodedType)) {
-    encodedData = I2OSP(BigInt(s), 32)
-  }
-  else if (encodedType == 'bytes32') {
-    encodedData = hexToBytes(s)
+    if (typeof data != 'string') throw new Error('not a string')
+    return keccak256(Buffer.from(data))
   }
   else if (encodedType == 'bytes') {
-    encodedData = keccak256(hexToBytes(s))
+    if (!hexStringRegExp.test(data))
+      throw new Error('not a hexstring')
+    return keccak256(hexToBytes(data))
+  }
+  else if (encodedType == 'bytes32') {
+    if (!bytes32RegExp.test(data))
+      throw new Error('not a bytes32 hexstring')
+    return hexToBytes(data)
+  }
+  else if (['uint256','address','bool'].includes(encodedType)) {
+    if (!['number','bigint','boolean','string'].includes(typeof data))
+      throw new Error('not atomic')
+    if (typeof data == 'string' &&
+        !(hexStringRegExp.test(data) ||
+          encodedType == 'uint256' && numberRegExp.test(data)))
+      throw new Error('not a hexstring')
+    return I2OSP(BigInt(data), 32)
   }
   else {
     const match = structTypeRegExp.exec(encodedType)
-    const name = match.groups.name
+    if (!match) throw new Error('invalid encoded type')
     const args = match.groups.args.split(',').map(arg => arg.split(' '))
-    encodedData = new Uint8Array(args.length * 32)
-    for (const [i, [type, name]] of args.entries())
-      encodedData.set(hashStruct(s[name], type), i * 32)
+    const encodedData = new Uint8Array(args.length * 32)
+    // only works when structs are not nested
+    for (const [i, [type, key]] of args.entries())
+      encodedData.set(encodeData(data[key], type), i * 32)
+    return encodedData
   }
+}
+
+const hashStruct = (data, encodedType) => {
+  const typeHash = keccak256(Buffer.from(encodedType))
+  const encodedData = encodeData(data, encodedType)
   return keccak256(concatBytes(typeHash, encodedData))
 }
 
@@ -475,7 +494,6 @@ for (const chainId of Object.keys(chainIds)) {
 }
 
 const typesForPUT = new Map()
-typesForPUT.set('GenerateSeed', '()')
 typesForPUT.set('CreateKey', '(uint256 index)')
 
 const typesForPOST = new Map()
@@ -498,6 +516,7 @@ typesForPOST.set('Exit',
 createServer((req, res) => {
   function handler(e) {
     let [code, body] = e.message.split(':', 2)
+    if (body) body += e.message.slice(code.length + 1 + body.length)
     const statusCode = parseInt(code) || 500
     if (!body && statusCode == 500) body = e.message
     if (body) {
@@ -523,6 +542,7 @@ createServer((req, res) => {
       if (!chain) throw new Error('404:Unknown chainId')
       const address = match.groups.address
       const addressPath = `work/${chainId}/${address}`
+      // TODO: return 0 in this case for nextindex instead of 404
       if (!existsSync(`${addressPath}/init`)) throw new Error('404:Unknown address')
       if (match.groups.i0 = 'nextindex') {
         const dir = readdirSync(addressPath)
@@ -565,34 +585,48 @@ createServer((req, res) => {
       }
     }
     else if (req.method == 'PUT') {
-      const [, chainId] = pathname.split('/')
+      const [, chainId, address] = pathname.split('/')
       if (!domainSeparators.has(chainId)) throw new Error('404:Unknown chainId')
+      if (!addressRegExp.test(address)) throw new Error('404:Invalid address')
       const [contentType, charset] = req.headers['content-type']?.split(';') || []
       if (contentType !== 'application/json')
         throw new Error('415:Accepts application/json only')
       if (charset && charset.trim().toLowerCase() !== 'charset=utf-8')
         throw new Error('415:Accepts charset=utf-8 only')
-      let body
+      let body = ''
       req.setEncoding('utf8')
       req.on('data', chunk => body += chunk)
       req.on('end', () => {
         try {
           if (!body) throw new Error('400:No data')
-          const {type, data, signature: {r, s, v}} = JSON.parse(body)
+          const {type, data, signature} = JSON.parse(body)
           if (!(typesForPUT.has(type))) throw new Error('400:Invalid type')
-          let sig
-          try { sig = new secp256k1.Signature(BigInt(r), BigInt(s), v) }
+          let sig = signature.startsWith('0x') ? signature.slice(2, -2) : signature.slice(0, -2)
+          const v = parseInt(`0x${signature.slice(-2)}`) - 27
+          if (sig.length != 2 * 64) throw new Error(`400:Invalid signature length ${sig.length}`)
+          try { sig = secp256k1.Signature.fromCompact(sig).addRecoveryBit(v) }
           catch (e) { throw new Error(`400:Invalid signature: ${e.message}`) }
           const domainSeparator = domainSeparators.get(chainId)
-          const message = concatBytes(
-            Buffer.from('\x19\x01'), domainSeparator,
-            hashStruct(data, `${type}${typesForPUT.get(type)}`)
-          )
-          const addressPubkey = sig.recoverPublicKey(keccak256(message))
-          const address = `0x${toHex(keccak256(addressPubkey.toRawBytes()).slice(-20))}`
-          console.log(`Got address ${address}`) // TODO
-          // TODO: verify the signature
-          // TODO: do the put
+          let message
+          try {
+            message = concatBytes(
+              Buffer.from('\x19\x01'), domainSeparator,
+              hashStruct(data, `${type}${typesForPUT.get(type)}`)
+            )
+          }
+          catch (e) { throw new Error(`400:Invalid data: ${e.message}`) }
+          const msgHash = keccak256(message)
+          const sigPubkey = sig.recoverPublicKey(msgHash)
+          const pubkeyForKeccak = sigPubkey.toRawBytes(false).slice(1)
+          if (pubkeyForKeccak.length != 64) throw new Error(`500:wrong length ${toHex(pubkeyForKeccak)}`)
+          const sigAddress = `0x${toHex(keccak256(pubkeyForKeccak).slice(-20))}`
+          if (sigAddress !== address) throw new Error(`400:Address mismatch: ${sigAddress}`)
+          const verified = secp256k1.verify(sig, msgHash, sigPubkey.toRawBytes())
+          if (!verified) throw new Error(`400:Invalid signature`)
+          // TODO: check if the index is the next index
+          // TODO: if the index is 0, generate the seed for the user
+          // TODO: create the key for the user
+          // TODO: record the log entry for the new pubkey
           throw new Error('501')
         }
         catch (e) { handler(e) }
