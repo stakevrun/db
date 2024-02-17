@@ -364,9 +364,14 @@ const generateKeystore = ({sk, path, pubkey}) => {
 //
 // We check the chainId in the URL matches the EIP712Domain chainId.
 //
-// Successful responses will have status 200 or 201 and empty body, except for
-// GetDepositData, which has an application/json body in the form
-// { depositDataRoot: string, signature: string }
+// Successful responses will have status 200 or 201 and an empty body or an
+// application/json body for the following requests:
+//
+// CreateKey: { index: number, pubkey: string }
+// where pubkey is the 0x-prefixed hexstring encoding the created key's pubkey
+// and index is the index for that pubkey.
+//
+// GetDepositData: { depositDataRoot: string, signature: string }
 // where depositDataRoot is a 0x-prefixed hexstring of 32 bytes, and
 // signature is a 0x-prefixed hexstring encoding a signature over
 // depositDataRoot.
@@ -520,11 +525,17 @@ createServer((req, res) => {
     const statusCode = parseInt(code) || 500
     if (!body && statusCode == 500) body = e.message
     if (body) {
-      const headers = {
-        'Content-Type': 'text/plain',
-        'Content-Length': Buffer.byteLength(body)
+      if (statusCode == 405) {
+        const headers = {'Allow': body}
+        res.writeHead(statusCode, headers).end()
       }
-      res.writeHead(statusCode, headers).end(body)
+      else {
+        const headers = {
+          'Content-Type': 'text/plain',
+          'Content-Length': Buffer.byteLength(body)
+        }
+        res.writeHead(statusCode, headers).end(body)
+      }
     }
     else {
       res.writeHead(statusCode).end()
@@ -584,7 +595,7 @@ createServer((req, res) => {
         }
       }
     }
-    else if (req.method == 'PUT') {
+    else {
       const [, chainId, address] = pathname.split('/')
       if (!domainSeparators.has(chainId)) throw new Error('404:Unknown chainId')
       if (!addressRegExp.test(address)) throw new Error('404:Invalid address')
@@ -593,6 +604,7 @@ createServer((req, res) => {
         throw new Error('415:Accepts application/json only')
       if (charset && charset.trim().toLowerCase() !== 'charset=utf-8')
         throw new Error('415:Accepts charset=utf-8 only')
+      if (!['PUT', 'POST'].includes(req.method)) throw new Error('405:PUT,POST')
       let body = ''
       req.setEncoding('utf8')
       req.on('data', chunk => body += chunk)
@@ -600,7 +612,8 @@ createServer((req, res) => {
         try {
           if (!body) throw new Error('400:No data')
           const {type, data, signature} = JSON.parse(body)
-          if (!(typesForPUT.has(type))) throw new Error('400:Invalid type')
+          const typeMap = req.method == 'PUT' ? typesForPUT : typesForPOST
+          if (!(typeMap.has(type))) throw new Error('400:Invalid type')
           let sig = signature.startsWith('0x') ? signature.slice(2, -2) : signature.slice(0, -2)
           const v = parseInt(`0x${signature.slice(-2)}`) - 27
           if (sig.length != 2 * 64) throw new Error(`400:Invalid signature length ${sig.length}`)
@@ -611,32 +624,29 @@ createServer((req, res) => {
           try {
             message = concatBytes(
               Buffer.from('\x19\x01'), domainSeparator,
-              hashStruct(data, `${type}${typesForPUT.get(type)}`)
+              hashStruct(data, `${type}${typeMap.get(type)}`)
             )
           }
           catch (e) { throw new Error(`400:Invalid data: ${e.message}`) }
           const msgHash = keccak256(message)
           const sigPubkey = sig.recoverPublicKey(msgHash)
-          const pubkeyForKeccak = sigPubkey.toRawBytes(false).slice(1)
-          if (pubkeyForKeccak.length != 64) throw new Error(`500:wrong length ${toHex(pubkeyForKeccak)}`)
-          const sigAddress = `0x${toHex(keccak256(pubkeyForKeccak).slice(-20))}`
-          if (sigAddress !== address) throw new Error(`400:Address mismatch: ${sigAddress}`)
           const verified = secp256k1.verify(sig, msgHash, sigPubkey.toRawBytes())
           if (!verified) throw new Error(`400:Invalid signature`)
-          // TODO: check if the index is the next index
-          // TODO: if the index is 0, generate the seed for the user
-          // TODO: create the key for the user
-          // TODO: record the log entry for the new pubkey
+          const pubkeyForKeccak = sigPubkey.toRawBytes(false).slice(1)
+          if (pubkeyForKeccak.length != 64) throw new Error(`500:Unexpected pubkey length ${toHex(pubkeyForKeccak)}`)
+          const sigAddress = `0x${toHex(keccak256(pubkeyForKeccak).slice(-20))}`
+          if (sigAddress !== address) throw new Error(`400:Address mismatch: ${sigAddress}`)
+          // if type == CreateKey
+            // TODO: check that the index is the next index, or a previously created index
+            // TODO: if the index is 0 and not previously created, generate the seed for the user
+            // TODO: if index not previously created:
+            // TODO:   create the key for the user
+            // TODO:   record the log entry for the new pubkey
+            // TODO: return the pubkey as body
           throw new Error('501')
         }
         catch (e) { handler(e) }
       })
-    }
-    else if (req.method == 'POST') {
-      throw new Error('501') // TODO
-    }
-    else {
-      throw new Error('405')
     }
   }
   catch (e) { handler(e) }
