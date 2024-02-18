@@ -1,4 +1,5 @@
 import { gitCheck, gitPush, workDir, chainIds, addressRe, addressRegExp } from './lib.js'
+import { spawnSync } from 'node:child_process'
 import { mkdirSync, existsSync, readdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { keccak256 } from "ethereum-cryptography/keccak.js";
@@ -20,15 +21,21 @@ const pathsFromIndex = index => {
 const errorPrefix = 'error: '
 const prv = (cmd, {chainId, address, path}, input) => {
   const env = { COMMAND: cmd, CHAINID: chainId, ADDRESS: address }
-  env.STATE_DIR = process.env.PRV_STATE_DIR // TODO: systemd
-  if (path) env.PATH = path
-  const res = spawnSync('node', ['prv'], { env }) // TODO: systemd
+  if (path) env.KEYPATH = path
+  const res = spawnSync('systemd-run', [
+    '--quiet', '--wait', '--collect', '--same-dir', '--pipe', '--user',
+    '--expand-environment=no',
+    '--property=DynamicUser=yes',
+    '--property=StateDirectory=prv', '--setenv=STATE_DIR=/var/lib/prv',
+    '--setenv=COMMAND', '--setenv=CHAINID', '--setenv=ADDRESS', '--setenv=KEYPATH',
+    'node', 'prv'
+  ], { env })
   if (res.status === 0)
     return res.stdout.trimEnd()
-  else if (res.stdout.startsWith(errorPrefix))
+  else if (res.stdout.toString().startsWith(errorPrefix))
     throw new Error(`500:${res.stdout.slice(errorPrefix.length)}`)
   else
-    throw new Error(`500:prv exited with status ${res.status}`)
+    throw new Error(`500:prv failed: status ${res.status}, stdout '${res.stdout}', stderr '${res.stderr}'`)
 }
 
 // srv repository database layout:
