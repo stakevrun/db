@@ -42,10 +42,10 @@ switch (process.env.COMMAND) {
       mkdirSync(chainPath)
       writeFileSync(seedPath, randomSeed(), {flag: 'wx'})
       gitCheck(['add', seedPath], workDir, '', 'failed to add seed')
-      gitCheck(['diff', '--staged', '--numstat'], workDir,
+      gitCheck(['diff', '--staged', '--name-status'], workDir,
         output => (
           !output.trimEnd().includes('\n') &&
-          output.trimEnd().split(/\s+/).join() == `-,-,${chainId}/${address}`
+          output.trimEnd().split(/\s+/).join() == `A,${chainId}/${address}`
         ),
         'unexpected diff adding seed'
       )
