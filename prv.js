@@ -2,7 +2,7 @@ process.setUncaughtExceptionCaptureCallback((e) => {
   console.log(`error: ${e.message}`)
 })
 
-import { randomSeed, privkeyFromPath, pubkeyFromPrivkey, generateKeystore } from './sig.js'
+import { randomSeed, privkeyFromPath, pubkeyFromPrivkey, generateKeystore, toHex } from './sig.js'
 import { gitCheck, gitPush, workDir, chainIds, addressRegExp } from './lib.js'
 import { mkdirSync, existsSync, writeFileSync, readFileSync } from 'node:fs'
 
