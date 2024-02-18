@@ -16,12 +16,12 @@ import { mkdirSync, existsSync, writeFileSync, readFileSync } from 'node:fs'
 // COMMAND = one of ( generate | pubkey | keystore | sign )
 // CHAINID = decimal string identifying the chain
 // ADDRESS = hexstring indicating the seed's owner
-// PATH    = string indicating the path for key derivation
+// KEYPATH = string indicating the path for key derivation
 //
 // generate: ensure the seed for ADDRESS exists, return 'created' or 'exists'
-// pubkey:   return the pubkey (hexstring) for ADDRESS's key at PATH
-// keystore: return a JSON-encoded keystore for ADDRESS's key at PATH
-// sign:     return signature (hexstring) for input data using ADDRESS's key at PATH
+// pubkey:   return the pubkey (hexstring) for ADDRESS's key at KEYPATH
+// keystore: return a JSON-encoded keystore for ADDRESS's key at KEYPATH
+// sign:     return signature (hexstring) for input data using ADDRESS's key at KEYPATH
 
 if (!addressRegExp.test(process.env.ADDRESS))
   throw new Error('invalid address')
@@ -56,7 +56,7 @@ switch (process.env.COMMAND) {
   }
   case process.env.COMMAND:
     const seed = readFileSync(seedPath)
-    const sk = privkeyFromPath(seed, process.env.PATH)
+    const sk = privkeyFromPath(seed, process.env.KEYPATH)
   case 'pubkey': {
     const pk = pubkeyFromPrivkey(sk)
     console.log(`0x${toHex(pk)}`)
@@ -64,7 +64,7 @@ switch (process.env.COMMAND) {
   }
   case 'keystore': {
     const pubkey = pubkeyFromPrivkey(sk)
-    const path = process.env.PATH
+    const path = process.env.KEYPATH
     console.log(JSON.stringify(generateKeystore({sk, path, pubkey})
     break
   }
