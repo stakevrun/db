@@ -31,7 +31,7 @@ const prv = (cmd, {chainId, address, path}, input) => {
     'node', 'prv'
   ], { env })
   if (res.status === 0)
-    return res.stdout.trimEnd()
+    return res.stdout.toString().trimEnd()
   else if (res.stdout.toString().startsWith(errorPrefix))
     throw new Error(`500:${res.stdout.slice(errorPrefix.length)}`)
   else
