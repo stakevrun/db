@@ -275,7 +275,7 @@ createServer((req, res) => {
       if (!chain) throw new Error('404:Unknown chainId')
       const address = match.groups.address
       const addressPath = `${workDir}/${chainId}/${address}`
-      if (match.groups.i0 = 'nextindex') {
+      if (match.groups.i0 == 'nextindex') {
         const body = (+getNextIndex(addressPath)).toString()
         resHeaders['Content-Length'] = Buffer.byteLength(body)
         res.writeHead(200, resHeaders).end(body)
