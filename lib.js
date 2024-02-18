@@ -20,14 +20,7 @@ export const gitCheck = (args, cwd, expectedOutput, msg) => {
     throw new Error(msg + ` ${res.status} '${res.stdout}' '${res.stderr}'`)
 }
 
-export const gitPush = (msg, cwd) => {
-  gitCheck(['commit', '--quiet', '--message', msg], cwd, '', 'failed to commit')
-  gitCheck(['push', '--porcelain'], cwd,
-    output => (output.startsWith('*') &&
-               !output.trimEnd().includes('\n')),
-    'failed to push'
-  )
-}
+const fastForwardRegExp = / \trefs\/heads\/main:refs\/heads\/main\t[0-9a-f]+\.\.[0-9a-f]+/
 
 if (!existsSync(bareDir)) {
   gitCheck(['init', '--quiet', '--bare', '--initial-branch=main', 'bare'], stateDir, '', 'failed to create bare repository')
@@ -55,3 +48,19 @@ gitCheck(['config', 'remote.origin.url'], workDir, `${bareDir}\n`, 'work remote 
 
 gitCheck(['config', 'user.name'], workDir, 'vrün\n', 'wrong user for work repository')
 gitCheck(['config', 'user.email'], workDir, 'db@vrün.com\n', 'wrong email for work repository')
+
+export const gitPush = (msg, cwd) => {
+  gitCheck(['commit', '--quiet', '--message', msg], cwd, '', 'failed to commit')
+  gitCheck(['push', '--porcelain'], cwd,
+    output => {
+      const lines = output.trimEnd().split('\n')
+      return (
+        lines.length == 3 &&
+        lines[0] == `To ${bareDir}` &&
+        fastForwardRegExp.test(lines[1]) &&
+        lines[2] == 'Done'
+      )
+    },
+    'failed to push'
+  )
+}
