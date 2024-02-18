@@ -1,0 +1,7 @@
+polkit.addRule(function (action, subject) {
+  if (action.id == "org.freedesktop.systemd1.manager" &&
+      subject.isInGroup("vrunsrv") &&
+      action.lookup("unit") == "vrunprv.scope" &&
+      action.lookup("verb") == "start")
+  return polkit.Result.YES
+})

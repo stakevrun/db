@@ -23,10 +23,10 @@ const prv = (cmd, {chainId, address, path}, input) => {
   const env = { COMMAND: cmd, CHAINID: chainId, ADDRESS: address }
   if (path) env.KEYPATH = path
   const res = spawnSync('systemd-run', [
-    '--quiet', '--wait', '--collect', '--same-dir', '--pipe', '--user',
+    '--quiet', '--scope', '--collect', '--same-dir', '--unit=vrunprv',
     '--expand-environment=no',
     '--property=DynamicUser=yes',
-    '--property=StateDirectory=prv', '--setenv=STATE_DIR=/var/lib/prv',
+    '--property=StateDirectory=vrunprv', '--setenv=STATE_DIR=/var/lib/vrunprv',
     '--setenv=COMMAND', '--setenv=CHAINID', '--setenv=ADDRESS', '--setenv=KEYPATH',
     'node', 'prv'
   ], { env })

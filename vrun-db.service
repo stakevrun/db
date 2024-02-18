@@ -1,0 +1,11 @@
+[Unit]
+Description=vrün db server
+
+[Service]
+ExecStart=node srv
+WorkingDirectory=/usr/share/vrün
+Type=exec
+DynamicUser=yes
+StateDirectory=vrunsrv
+Environment=STATE_DIR=/var/lib/vrunsrv
+SupplementaryGroups=vrunsrv
