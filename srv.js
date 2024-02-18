@@ -23,7 +23,9 @@ const prv = (cmd, {chainId, address, path}, input) => {
   const env = { COMMAND: cmd, CHAINID: chainId, ADDRESS: address }
   if (path) env.KEYPATH = path
   const res = spawnSync('systemd-run', [
-    '--quiet', '--scope', '--collect', '--same-dir', '--unit=vrunprv',
+    '--quiet', '--collect', '--same-dir',
+    '--wait', '--pipe', // want --scope but https://github.com/systemd/systemd/issues/31380
+    '--unit=vrunprv',
     '--expand-environment=no',
     '--property=DynamicUser=yes',
     '--property=StateDirectory=vrunprv', '--setenv=STATE_DIR=/var/lib/vrunprv',
