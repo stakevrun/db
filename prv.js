@@ -65,7 +65,7 @@ switch (process.env.COMMAND) {
   case 'keystore': {
     const pubkey = pubkeyFromPrivkey(sk)
     const path = process.env.KEYPATH
-    console.log(JSON.stringify(generateKeystore({sk, path, pubkey})
+    console.log(JSON.stringify(generateKeystore({sk, path, pubkey})))
     break
   }
   case 'sign': {
