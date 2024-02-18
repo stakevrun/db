@@ -30,7 +30,7 @@ export const gitPush = (msg, cwd) => {
 }
 
 if (!existsSync(bareDir)) {
-  gitCheck(['init', '--quiet', '--bare', 'bare'], stateDir, '', 'failed to create bare repository')
+  gitCheck(['init', '--quiet', '--bare', '--initial-branch=main', 'bare'], stateDir, '', 'failed to create bare repository')
   gitCheck(['config', 'receive.denyNonFastForwards', 'true'], bareDir, '', 'failed to set denyNonFastForwards')
   gitCheck(['config', 'receive.denyDeletes', 'true'], bareDir, '', 'failed to set denyDeletes')
 }
@@ -43,7 +43,9 @@ const bareRealPath = realpathSync(bareDir)
 
 if (!existsSync(workDir)) {
   gitCheck(['clone', '--quiet', '--no-hardlinks', bareDir, workDir], stateDir, '', 'failed to clone work repository')
-  gitCheck(['commit', '--quiet', '--allow-empty', '--message', 'init'], workDir, '', 'failed initial commit')
+  gitCheck(['config', 'user.name', 'vrün'], workDir, '', 'failed to set user name')
+  gitCheck(['config', 'user.email', 'db@vrün.com'], workDir, '', 'failed to set user email')
+  gitCheck(['commit', '--quiet', '--allow-empty', '--message=init'], workDir, '', 'failed initial commit')
   gitCheck(['push', '--quiet'], workDir, '', 'failed initial push')
 }
 
@@ -55,3 +57,6 @@ gitCheck(['config', 'remote.origin.url'], workDir,
   s => realpathSync(s.trim()) === bareRealPath,
   'work remote is not bare'
 )
+
+gitCheck(['config', 'user.name'], workDir, 'vrün\n', 'wrong user for work repository')
+gitCheck(['config', 'user.email'], workDir, 'db@vrün.com\n', 'wrong email for work repository')
