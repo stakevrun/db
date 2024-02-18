@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, realpathSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 
 export const chainIds = {
   1: 'mainnet',
@@ -39,8 +39,6 @@ gitCheck(['rev-parse', '--is-bare-repository'], bareDir, 'true\n', 'bare is not 
 gitCheck(['config', 'receive.denyNonFastForwards'], bareDir, 'true\n', 'bare does not deny non-fast-forwards')
 gitCheck(['config', 'receive.denyDeletes'], bareDir, 'true\n', 'bare does not deny deletes')
 
-const bareRealPath = realpathSync(bareDir)
-
 if (!existsSync(workDir)) {
   gitCheck(['clone', '--quiet', '--no-hardlinks', bareDir, workDir], stateDir, '', 'failed to clone work repository')
   gitCheck(['config', 'user.name', 'vrün'], workDir, '', 'failed to set user name')
@@ -53,10 +51,7 @@ gitCheck(['status', '--porcelain'], workDir, '', 'work directory not clean')
 
 gitCheck(['rev-parse', '--abbrev-ref', '@{upstream}'], workDir, 'origin/main\n', 'work upstream not origin/main')
 
-gitCheck(['config', 'remote.origin.url'], workDir,
-  s => realpathSync(s.trim()) === bareRealPath,
-  'work remote is not bare'
-)
+gitCheck(['config', 'remote.origin.url'], workDir, `${bareDir}\n`, 'work remote is not bare')
 
 gitCheck(['config', 'user.name'], workDir, 'vrün\n', 'wrong user for work repository')
 gitCheck(['config', 'user.email'], workDir, 'db@vrün.com\n', 'wrong email for work repository')
