@@ -21,7 +21,7 @@ export const gitCheck = (args, cwd, expectedOutput, msg) => {
 }
 
 export const gitPush = (msg, cwd) => {
-  gitCheck(['commit', '--message', msg], cwd, '', 'failed to commit')
+  gitCheck(['commit', '--quiet', '--message', msg], cwd, '', 'failed to commit')
   gitCheck(['push', '--porcelain'], cwd,
     output => (output.startsWith('*') &&
                !output.trimEnd().includes('\n')),
