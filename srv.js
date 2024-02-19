@@ -266,6 +266,8 @@ typesForPOST.set('Exit',
   'uint256 timestamp,bytes pubkey'
 )
 
+const allowedMethods = 'GET,HEAD,OPTIONS,POST,PUT'
+
 createServer((req, res) => {
   const resHeaders = {
     'Access-Control-Allow-Origin': '*'
@@ -277,7 +279,7 @@ createServer((req, res) => {
     if (!body && statusCode == 500) body = e.message
     if (body) {
       if (statusCode == 405) {
-        resHeaders['Allow'] = body
+        resHeaders['Allow'] = allowedMethods
         res.writeHead(statusCode, headers).end()
       }
       else {
@@ -428,10 +430,12 @@ createServer((req, res) => {
     }
     else if (req.method == 'OPTIONS') {
       resHeaders['Content-Length'] = 0
+      resHeaders['Access-Control-Allow-Methods'] = allowedMethods
+      resHeaders['Access-Control-Allow-Headers'] = '*'
       res.writeHead(204, resHeaders).end()
     }
     else
-      throw new Error('405:GET,HEAD,OPTIONS,POST,PUT')
+      throw new Error('405')
   }
   catch (e) { handler(e) }
 }).listen(port)
