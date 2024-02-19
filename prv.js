@@ -3,6 +3,7 @@ process.setUncaughtExceptionCaptureCallback((e) => {
 })
 
 import { randomSeed, privkeyFromPath, pubkeyFromPrivkey, generateKeystore, toHex } from './sig.js'
+import { bls12_381 } from '@noble/curves/bls12-381'
 import { gitCheck, gitPush, workDir, chainIds, addressRegExp } from './lib.js'
 import { mkdirSync, existsSync, writeFileSync, readFileSync } from 'node:fs'
 
@@ -10,7 +11,7 @@ import { mkdirSync, existsSync, writeFileSync, readFileSync } from 'node:fs'
 // ${chainId}/${address} : 32 bytes (no encoding)
 
 // prv: private key management
-// takes environment variables and stdin for input (hexstring) and produces
+// takes environment variables and stdin for input (raw bytes) and produces
 // output on stdout
 // input variables:
 // COMMAND = one of ( generate | pubkey | keystore | sign )
@@ -69,7 +70,8 @@ switch (process.env.COMMAND) {
     break
   }
   case 'sign': {
-    throw new Error('sign not implemented yet')
+    const sig = bls12_381.sign(readFileSync(process.stdin.fd), sk)
+    console.log(`0x${toHex(sig)}`)
     break
   }
   default:

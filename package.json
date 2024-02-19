@@ -4,6 +4,7 @@
   "license": "GPL-3.0-or-later",
   "type": "module",
   "dependencies": {
-    "ethereum-cryptography": "2"
+    "ethereum-cryptography": "2",
+    "@noble/curves": "1"
   }
 }

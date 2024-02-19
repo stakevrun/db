@@ -31,7 +31,7 @@ const prv = (cmd, {chainId, address, path}, input) => {
     '--property=StateDirectory=vrunprv', '--setenv=STATE_DIR=/var/lib/vrunprv',
     '--setenv=COMMAND', '--setenv=CHAINID', '--setenv=ADDRESS', '--setenv=KEYPATH',
     'node', 'prv'
-  ], { env })
+  ], { env, input })
   if (res.status === 0)
     return res.stdout.toString().trimEnd()
   else if (res.stdout.toString().startsWith(errorPrefix))

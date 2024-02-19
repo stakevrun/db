@@ -251,5 +251,3 @@ export const generateKeystore = ({sk, path, pubkey}) => {
 
   return keystore
 }
-
-// TODO: add signing with an sk
