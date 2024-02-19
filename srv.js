@@ -267,6 +267,9 @@ typesForPOST.set('Exit',
 )
 
 createServer((req, res) => {
+  const resHeaders = {
+    'Access-Control-Allow-Origin': '*'
+  }
   function handler(e) {
     let [code, body] = e.message.split(':', 2)
     if (body) body += e.message.slice(code.length + 1 + body.length)
@@ -274,29 +277,25 @@ createServer((req, res) => {
     if (!body && statusCode == 500) body = e.message
     if (body) {
       if (statusCode == 405) {
-        const headers = {'Allow': body}
+        resHeaders['Allow'] = body
         res.writeHead(statusCode, headers).end()
       }
       else {
-        const headers = {
-          'Content-Type': 'text/plain',
-          'Content-Length': Buffer.byteLength(body)
-        }
-        res.writeHead(statusCode, headers).end(body)
+        resHeaders['Content-Type'] = 'text/plain'
+        resHeaders['Content-Length'] = Buffer.byteLength(body)
+        res.writeHead(statusCode, resHeaders)
+        res.method == 'HEAD' ? res.end() : res.end(body)
       }
     }
     else {
-      res.writeHead(statusCode).end()
+      res.writeHead(statusCode, resHeaders).end()
     }
   }
   try {
-    const resHeaders = {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*'
-    }
+    resHeaders['Content-Type'] = 'application/json'
     const url = new URL(req.url, `http://${req.headers.host}`)
     const pathname = url.pathname.toLowerCase()
-    if (req.method == 'GET') {
+    if (['GET', 'HEAD'].includes(req.method)) {
       const match = routesRegExp.exec(pathname)
       if (!match) throw new Error('404:Unknown route')
       const chainId = parseInt(match.groups.chainId)
@@ -307,7 +306,8 @@ createServer((req, res) => {
       if (match.groups.i0 == 'nextindex') {
         const body = (+getNextIndex(addressPath)).toString()
         resHeaders['Content-Length'] = Buffer.byteLength(body)
-        res.writeHead(200, resHeaders).end(body)
+        res.writeHead(200, resHeaders)
+        req.method == 'HEAD' ? res.end() : res.end(body)
       }
       else if (match.groups.i1 == 'pubkey') {
         if (!existsSync(addressPath)) throw new Error('404:Unknown address')
@@ -316,8 +316,10 @@ createServer((req, res) => {
         const {signing: path} = pathsFromIndex(index)
         const pubkey = prv('pubkey', {chainId, address, path})
         if (!existsSync(`${addressPath}/${pubkey}`)) throw new Error(`400:Unknown index`)
-        resHeaders['Content-Length'] = Buffer.byteLength(pubkey)
-        res.writeHead(200, resHeaders).end(pubkey)
+        const body = pubkey
+        resHeaders['Content-Length'] = Buffer.byteLength(body)
+        res.writeHead(200, resHeaders)
+        req.method == 'HEAD' ? res.end() : res.end(body)
       }
       else {
         if (!existsSync(addressPath)) throw new Error('404:Unknown address')
@@ -327,7 +329,8 @@ createServer((req, res) => {
         if (match.groups.i2 == 'length') {
           const body = logs.length.toString()
           resHeaders['Content-Length'] = Buffer.byteLength(body)
-          res.writeHead(200, resHeaders).end(body)
+          res.writeHead(200, resHeaders)
+          req.method == 'HEAD' ? res.end() : res.end(body)
         }
         else if (match.groups.i3 == 'logs') {
           const start = url.searchParams.get('start')
@@ -335,14 +338,15 @@ createServer((req, res) => {
           const end = Number.isNaN(endInt) ? logs.length : endInt
           const body = JSON.stringify(logs.slice(start, end))
           resHeaders['Content-Length'] = Buffer.byteLength(body)
-          res.writeHead(200, resHeaders).end(body)
+          res.writeHead(200, resHeaders)
+          req.method == 'HEAD' ? res.end() : res.end(body)
         }
         else {
           throw new Error('404:Unexpected route')
         }
       }
     }
-    else {
+    else if (['PUT', 'POST'].includes(req.method)) {
       const [, chainId, address] = pathname.split('/')
       if (!domainSeparators.has(chainId)) throw new Error('404:Unknown chainId')
       if (!addressRegExp.test(address)) throw new Error('404:Invalid address')
@@ -351,7 +355,6 @@ createServer((req, res) => {
         throw new Error('415:Accepts application/json only')
       if (charset && charset.trim().toLowerCase() !== 'charset=utf-8')
         throw new Error('415:Accepts charset=utf-8 only')
-      if (!['PUT', 'POST'].includes(req.method)) throw new Error('405:PUT,POST')
       let body = ''
       req.setEncoding('utf8')
       req.on('data', chunk => body += chunk)
@@ -423,6 +426,12 @@ createServer((req, res) => {
         catch (e) { handler(e) }
       })
     }
+    else if (req.method == 'OPTIONS') {
+      resHeaders['Content-Length'] = 0
+      res.writeHead(204, resHeaders).end()
+    }
+    else
+      throw new Error('405:GET,HEAD,OPTIONS,POST,PUT')
   }
   catch (e) { handler(e) }
 }).listen(port)
