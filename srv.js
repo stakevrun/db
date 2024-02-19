@@ -441,7 +441,8 @@ createServer((req, res) => {
             depositMessageRootPrehash.set(sha256(wcAmountPadded), 32)
             const depositMessageRoot = sha256(depositMessageRootPrehash)
             const depositDomainType = Uint8Array.from([3, 0, 0, 0])
-            const forkDataRoot = sha256(new Uint8Array(64))
+            const depositDataRootPrehash = new Uint8Array(64)
+            const forkDataRoot = sha256(depositDataRootPrehash)
             const domain = concatBytes(depositDomainType, forkDataRoot.slice(0, 28))
             const signingRoot = sha256(depositMessageRoot, domain)
             const {signing: path} = pathsFromIndex(index)
@@ -451,7 +452,6 @@ createServer((req, res) => {
             const signatureBytes = hexToBytes(signature)
             const signature2 = new Uint8Array(64)
             signature2.set(signatureBytes.slice(64))
-            const depositDataRootPrehash = new Uint8Array(64)
             depositDataRootPrehash.set(depositMessageRoot)
             depositDataRootPrehash.set(
               sha256(concatBytes(sha256(signatureBytes.slice(0, 64)), sha256(signature2))),
