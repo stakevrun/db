@@ -162,8 +162,8 @@ const getNextIndex = addressPath =>
     null
 
 const numberRegExp = /[1-9][0-9]*/
-const hexStringRegExp = /0x[0-9a-f]*/
-const bytes32RegExp = /0x[0-9a-f]{32}/
+const hexStringRegExp = /0x[0-9a-fA-F]*/
+const bytes32RegExp = /0x[0-9a-fA-F]{32}/
 const structTypeRegExp = /(?<name>\w+)\((?<args>(?:\w+ \w+(?:,\w+ \w+)*)?)\)/
 
 const encodeData = (data, encodedType) => {
@@ -184,6 +184,10 @@ const encodeData = (data, encodedType) => {
   else if (['uint256','address','bool'].includes(encodedType)) {
     if (!['number','bigint','boolean','string'].includes(typeof data))
       throw new Error('not atomic')
+    if ((typeof data == 'boolean' && encodedType != 'bool') ||
+        (typeof data == 'string' && !['uint256','address'].includes(encodedType)) ||
+        (['number','bigint'].includes(typeof data) && encodedType != 'uint256'))
+      throw new Error('wrong type')
     if (typeof data == 'string' &&
         !(hexStringRegExp.test(data) ||
           encodedType == 'uint256' && numberRegExp.test(data)))
@@ -219,25 +223,47 @@ for (const chainId of Object.keys(chainIds)) {
   )
 }
 
+const normaliseData = (data, args) => {
+  const normalised = {}
+  for (const arg of args) {
+    const [type, key] = arg.split(' ')
+    switch (type) {
+      case 'bytes32':
+      case 'address':
+      case 'bytes':
+        normalised[key] = data[key].toLowerCase()
+        break
+      case 'uint256':
+        normalised[key] = BigInt(data[key]).toString()
+        break
+      case 'bool':
+      case 'string':
+      default:
+        normalised[key] = data[key]
+    }
+  }
+  return normalised
+}
+
 const typesForPUT = new Map()
 const typesForPOST = new Map()
 
-typesForPUT.set('CreateKey', '(uint256 index)')
+typesForPUT.set('CreateKey', 'uint256 index')
 
 typesForPOST.set('GetDepositData',
-  '(uint256 timestamp,bytes pubkey,uint256 amountGwei,bytes32 withdrawalCredentials)'
+  'uint256 timestamp,bytes pubkey,uint256 amountGwei,bytes32 withdrawalCredentials'
 )
 typesForPOST.set('SetFeeRecipient',
-  '(uint256 timestamp,bytes pubkey,address feeRecipient)'
+  'uint256 timestamp,bytes pubkey,address feeRecipient'
 )
 typesForPOST.set('SetGraffiti',
-  '(uint256 timestamp,bytes pubkey,string graffiti)'
+  'uint256 timestamp,bytes pubkey,string graffiti'
 )
 typesForPOST.set('SetEnabled',
-  '(uint256 timestamp,bytes pubkey,bool enabled)'
+  'uint256 timestamp,bytes pubkey,bool enabled'
 )
 typesForPOST.set('Exit',
-  '(uint256 timestamp,bytes pubkey)'
+  'uint256 timestamp,bytes pubkey'
 )
 
 createServer((req, res) => {
@@ -338,11 +364,12 @@ createServer((req, res) => {
           try { sig = secp256k1.Signature.fromCompact(sig).addRecoveryBit(v) }
           catch (e) { throw new Error(`400:Invalid signature: ${e.message}`) }
           const domainSeparator = domainSeparators.get(chainId)
+          const args = typeMap.get(type)
           let message
           try {
             message = concatBytes(
               Buffer.from('\x19\x01'), domainSeparator,
-              hashStruct(data, `${type}${typeMap.get(type)}`)
+              hashStruct(data, `${type}(${args})`)
             )
           }
           catch (e) { throw new Error(`400:Invalid data: ${e.message}`) }
@@ -369,7 +396,8 @@ createServer((req, res) => {
             const pubkeyPath = `${addressPath}/${pubkey}`
             const existing = !(nextIndex == null || nextIndex == index)
             if (!existing) {
-              const log = {type, ...data}
+              const timestamp = Math.floor(Date.now() / 1000).toString()
+              const log = {type, timestamp, ...normaliseData(data, args.split(','))}
               writeFileSync(pubkeyPath, `${JSON.stringify(log)}\n`, {flag: 'a'})
               gitCheck(['add', pubkeyPath], workDir, '', `failed to log ${type}`)
               gitCheck(['diff', '--staged', '--numstat'], workDir,
