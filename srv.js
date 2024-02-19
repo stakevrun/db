@@ -458,7 +458,7 @@ createServer((req, res) => {
               32
             )
             const depositDataRoot = toHex(sha256(depositDataRootPrehash))
-            const body = { depositDataRoot, signature }
+            const body = JSON.stringify({ depositDataRoot, signature })
             resHeaders['Content-Length'] = Buffer.byteLength(body)
             res.writeHead(200, resHeaders).end(body)
           }
