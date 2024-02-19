@@ -71,7 +71,8 @@ const prv = (cmd, {chainId, address, path}, input) => {
 // [<log>...] - log entries, with start and end interpreted as in
 // returns: Array.prototype.slice, with the earliest logs first
 //
-// PUT (CreateKey) or POST (the rest) /<chainId>/<address>
+// PUT (CreateKey) /<chainId>/<address>
+// POST (the rest) /<chainId>/<address>/<index>
 // the body content-type should be application/json
 // the body should be JSON in the following format
 //
@@ -161,7 +162,7 @@ const getNextIndex = addressPath =>
     readdirSync(addressPath).length :
     null
 
-const numberRegExp = /[1-9][0-9]*/
+const numberRegExp = /[0-9]+/
 const hexStringRegExp = /0x[0-9a-fA-F]*/
 const bytes32RegExp = /0x[0-9a-fA-F]{32}/
 const structTypeRegExp = /(?<name>\w+)\((?<args>(?:\w+ \w+(?:,\w+ \w+)*)?)\)/
@@ -349,9 +350,10 @@ createServer((req, res) => {
       }
     }
     else if (['PUT', 'POST'].includes(req.method)) {
-      const [, chainId, address] = pathname.split('/')
+      const [, chainId, address, index] = pathname.split('/')
       if (!domainSeparators.has(chainId)) throw new Error('404:Unknown chainId')
       if (!addressRegExp.test(address)) throw new Error('404:Invalid address')
+      if (typeof index == 'string' && !numberRegExp.test(index)) throw new Error('404:Invalid index')
       const [contentType, charset] = req.headers['content-type']?.split(';') || []
       if (contentType !== 'application/json')
         throw new Error('415:Accepts application/json only')
