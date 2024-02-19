@@ -2,6 +2,7 @@ import { gitCheck, gitPush, workDir, chainIds, addressRe, addressRegExp } from '
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, existsSync, readdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
+import { sha256 } from "ethereum-cryptography/sha256.js";
 import { keccak256 } from "ethereum-cryptography/keccak.js";
 import { secp256k1 } from "ethereum-cryptography/secp256k1.js";
 import { hexToBytes, toHex, concatBytes } from "ethereum-cryptography/utils.js";
@@ -392,6 +393,7 @@ createServer((req, res) => {
           const sigAddress = `0x${toHex(keccak256(pubkeyForKeccak).slice(-20))}`
           if (sigAddress !== address) throw new Error(`400:Address mismatch: ${sigAddress}`)
           const addressPath = `${workDir}/${chainId}/${address}`
+          const nData = normaliseData(data, args.split(','))
           if (type == 'CreateKey') {
             const index = parseInt(data.index)
             const nextIndex = getNextIndex(addressPath)
@@ -407,7 +409,7 @@ createServer((req, res) => {
             const existing = !(nextIndex == null || nextIndex == index)
             if (!existing) {
               const timestamp = Math.floor(Date.now() / 1000).toString()
-              const log = {type, timestamp, ...normaliseData(data, args.split(','))}
+              const log = {type, timestamp, ...nData}
               writeFileSync(pubkeyPath, `${JSON.stringify(log)}\n`, {flag: 'a'})
               gitCheck(['add', pubkeyPath], workDir, '', `failed to log ${type}`)
               gitCheck(['diff', '--staged', '--numstat'], workDir,
@@ -422,6 +424,43 @@ createServer((req, res) => {
             const statusCode = existing ? 200 : 201
             resHeaders['Content-Length'] = Buffer.byteLength(pubkey)
             res.writeHead(statusCode, resHeaders).end(pubkey)
+          }
+          else if (type == 'GetDepositData') {
+            const pubkeyPath = `${addressPath}/${nData.pubkey}`
+            if (!existsSync(pubkeyPath)) throw new Error(`400:Unknown pubkey`)
+            const amountBytes = new DataView(new ArrayBuffer(8))
+            amountBytes.setBigUint64(0, BigInt(data.amountGwei), true)
+            const pubkeyBytes = hexToBytes(data.pubkey)
+            const pubkeyBytesPadded = new Uint8Array(64)
+            pubkeyBytesPadded.set(pubkeyBytes)
+            const wcAmountPadded = new Uint8Array(64)
+            wcAmountPadded.set(hexToBytes(data.withdrawalCredentials))
+            wcAmountPadded.set(amountBytes.buffer, 32)
+            const depositMessageRootPrehash = new Uint8Array(64)
+            depositMessageRootPrehash.set(sha256(pubkeyBytesPadded))
+            depositMessageRootPrehash.set(sha256(wcAmountPadded), 32)
+            const depositMessageRoot = sha256(depositMessageRootPrehash)
+            const depositDomainType = Uint8Array.from([3, 0, 0, 0])
+            const forkDataRoot = sha256(new Uint8Array(64))
+            const domain = concatBytes(depositDomainType, forkDataRoot.slice(0, 28))
+            const signingRoot = sha256(depositMessageRoot, domain)
+            const {signing: path} = pathsFromIndex(index)
+            const pubkey = prv('pubkey', {chainId, address, path})
+            if (pubkey !== nData.pubkey) throw new Error('400:Wrong pubkey for index')
+            const signature = prv('sign', {chainId, address, path}, signingRoot)
+            const signatureBytes = hexToBytes(signature)
+            const signature2 = new Uint8Array(64)
+            signature2.set(signatureBytes.slice(64))
+            const depositDataRootPrehash = new Uint8Array(64)
+            depositDataRootPrehash.set(depositMessageRoot)
+            depositDataRootPrehash.set(
+              sha256(concatBytes(sha256(signatureBytes.slice(0, 64)), sha256(signature2))),
+              32
+            )
+            const depositDataRoot = toHex(sha256(depositDataRootPrehash))
+            const body = { depositDataRoot, signature }
+            resHeaders['Content-Length'] = Buffer.byteLength(body)
+            res.writeHead(200, resHeaders).end(body)
           }
           else {
             throw new Error('501')
