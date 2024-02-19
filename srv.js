@@ -290,7 +290,10 @@ createServer((req, res) => {
     }
   }
   try {
-    const resHeaders = {'Content-Type': 'application/json'}
+    const resHeaders = {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*'
+    }
     const url = new URL(req.url, `http://${req.headers.host}`)
     const pathname = url.pathname.toLowerCase()
     if (req.method == 'GET') {
