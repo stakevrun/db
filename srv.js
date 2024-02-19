@@ -294,7 +294,7 @@ createServer((req, res) => {
         if (!existsSync(addressPath)) throw new Error('404:Unknown address')
         const pubkey = [2, 3].map(i => match.groups[`pubkey${i}`]).find(x => x)
         const logPath = `${addressPath}/${pubkey}`
-        const logs = JSON.parse(readFileSync(logPath))
+        const logs = readFileSync(logPath, 'utf8').trimEnd().split('\n').map(JSON.parse)
         if (match.groups.i2 == 'length') {
           const body = logs.length.toString()
           resHeaders['Content-Length'] = Buffer.byteLength(body)
