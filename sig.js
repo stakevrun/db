@@ -201,6 +201,77 @@ export const pubkeyFromPrivkey = (sk) => {
   return bytes
 }
 
+/* If we were to do hashToCurve ourselves...
+
+const DST = 'BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_'
+const DSTPrime = new Uint8Array(DST.length + 1)
+DSTPrime.set(Buffer.from(DST))
+DSTPrime[DST.length] = DST.length
+const bBytes = 32
+const sBytes = 64
+const Zpad = I2OSP(0n, sBytes)
+const pad0 = I2OSP(0n, 1)
+const pad1 = I2OSP(1n, 1)
+const m = 2
+const k = 128
+const htfL = 64
+
+const concatBytes = (...as) => {
+  const r = new Uint8Array(as.reduce((l, a) => l + a.length))
+  let n = 0
+  for (const a of as) {
+    r.set(a, n)
+    n += a.length
+  }
+  return r
+}
+
+const expandMessageXMD = (msg, len) => {
+  const libStr = I2OSP(BigInt(len), 2)
+  const msgPrime = concatBytes(Zpad, msg, libStr, pad0, DSTPrime)
+  const b0 = sha256(msgPrime)
+  const b1 = sha256(concatBytes(b0, pad1, DSTPrime))
+  const res = new Uint8Array(len)
+  let b = b1
+  let n = 0
+  while (true) {
+    if (len < n + b.length) {
+      res.set(b, n)
+      n += b.length
+      b = sha256(concatBytes(b0.map((x, i) => x ^ b[i]), pad1, DSTPrime))
+    }
+    else {
+      res.set(b.slice(0, len - n), n)
+      break
+    }
+  }
+  return res
+}
+
+const hashToField = (msg, count) => {
+  const len = count * m * htfL
+  const uniformBytes = expandMessageXMD(msg, len)
+  const res = []
+  let n = 0
+  for (const i of Array(count).keys()) {
+    const x = uniformBytes.slice(n, n += htfL)
+    const y = uniformBytes.slice(n, n += htfL)
+    res.push(
+      { x: mod(OS2IP(x), order),
+        y: mod(OS2IP(y), order) }
+    )
+  }
+  return res
+}
+
+export const sign = (sk, message) => {
+  // TODO: hash message to curve
+  const sig = mulp(sk, mp)
+  return I2OSP(sig, 96)
+}
+
+*/
+
 // ERC-2335
 
 const password = 'Never Gonna Give You Up'
