@@ -91,7 +91,6 @@ const prv = (cmd, {chainId, address, path}, input) => {
 // }
 //
 // struct GetDepositData {
-//   uint256 timestamp;
 //   bytes pubkey;
 //   bytes32 withdrawalCredentials;
 //   uint256 amountGwei;
@@ -253,7 +252,7 @@ const typesForPOST = new Map()
 typesForPUT.set('CreateKey', 'uint256 index')
 
 typesForPOST.set('GetDepositData',
-  'uint256 timestamp,bytes pubkey,bytes32 withdrawalCredentials,uint256 amountGwei'
+  'bytes pubkey,bytes32 withdrawalCredentials,uint256 amountGwei'
 )
 typesForPOST.set('SetFeeRecipient',
   'uint256 timestamp,bytes pubkey,address feeRecipient'
