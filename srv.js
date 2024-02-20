@@ -469,29 +469,26 @@ createServer((req, res) => {
               resHeaders['Content-Length'] = Buffer.byteLength(body)
               res.writeHead(200, resHeaders).end(body)
             }
-            else if (type == 'SetEnabled') {
+            else {
               const logs = readFileSync(logPath, 'utf8').trimEnd().split('\n').map(JSON.parse)
               if (!logs.length) throw new Error(`400:Pubkey has no logs`)
               const lastLog = logs.at(-1)
               if (!(parseInt(lastLog.timestamp) < parseInt(data.timestamp))) throw new Error(`400:Timestamp too early`)
               if (!(parseint(data.timestamp) < (Date.now() / 1000))) throw new Error(`400:Timestamp in the future`)
-              const lastSetEnabled = logs.toReversed().find(({type}) => type == 'SetEnabled')
-              if (lastSetEnabled && lastSetEnabled.enabled == data.enabled) throw new Error(`400:Setting unchanged`)
-              addLogLine(logPath, {type, ...data})
+              if (logs.some(({type}) => type == 'Exit')) throw new Error(`400:Already exited`)
+              if (['SetEnabled', 'SetFeeRecipient', 'SetGraffiti'].includes(type)) {
+                const key = type.slice(3).toLowerCase()
+                const lastLog = logs.toReversed().find(({type: logType}) => logType == type)
+                if (lastLog?.[key] === data[key])
+                  throw new Error(`400:Setting unchanged`)
+              }
+              else if (type != 'Exit')
+                throw new Error('400:Unknown instruction')
+              const log = {type, ...data}
+              delete log.pubkey
+              addLogLine(logPath, log)
               resHeaders['Content-Length'] = 0
               res.writeHead(201, resHeaders).end()
-            }
-            else if (type == 'SetFeeRecipient') {
-              throw new Error('501')
-            }
-            else if (type == 'SetGraffiti') {
-              throw new Error('501')
-            }
-            else if (type == 'Exit') {
-              throw new Error('501')
-            }
-            else {
-              throw new Error('400:Unknown instruction')
             }
           }
         }
