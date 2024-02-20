@@ -267,6 +267,48 @@ typesForPOST.set('Exit',
   'uint256 timestamp,bytes pubkey'
 )
 
+const verifyEIP712 = (body, typeMap) => {
+  if (!body) throw new Error('400:No data')
+  const {type, data, signature} = JSON.parse(body)
+  if (!(typeMap.has(type))) throw new Error('400:Invalid type')
+  const args = typeMap.get(type)
+  let sig = signature.startsWith('0x') ? signature.slice(2, -2) : signature.slice(0, -2)
+  const v = parseInt(`0x${signature.slice(-2)}`) - 27
+  if (sig.length != 2 * 64) throw new Error(`400:Invalid signature length ${sig.length}`)
+  try { sig = secp256k1.Signature.fromCompact(sig).addRecoveryBit(v) }
+  catch (e) { throw new Error(`400:Invalid signature: ${e.message}`) }
+  const domainSeparator = domainSeparators.get(chainId)
+  let message
+  try {
+    message = concatBytes(
+      Buffer.from('\x19\x01'), domainSeparator,
+      hashStruct(data, `${type}(${args})`)
+    )
+  }
+  catch (e) { throw new Error(`400:Invalid data: ${e.message}`) }
+  const msgHash = keccak256(message)
+  const sigPubkey = sig.recoverPublicKey(msgHash)
+  const verified = secp256k1.verify(sig, msgHash, sigPubkey.toRawBytes())
+  if (!verified) throw new Error(`400:Invalid signature`)
+  const pubkeyForKeccak = sigPubkey.toRawBytes(false).slice(1)
+  if (pubkeyForKeccak.length != 64) throw new Error(`500:Unexpected pubkey length ${toHex(pubkeyForKeccak)}`)
+  const address = `0x${toHex(keccak256(pubkeyForKeccak).slice(-20))}`
+  return { data: normaliseData(data, args.split(',')), address }
+}
+
+const addLogLine = (logPath, log) => {
+  writeFileSync(logPath, `${JSON.stringify(log)}\n`, {flag: 'a'})
+  gitCheck(['add', logPath], workDir, '', `failed to log ${log.type}`)
+  gitCheck(['diff', '--staged', '--numstat'], workDir,
+    output => (
+      !output.trimEnd().includes('\n') &&
+      output.trimEnd().split(/\s+/).join() == `1,0,${chainId}/${address}/${pubkey}`
+    ),
+    `unexpected diff logging ${log.type}`
+  )
+  gitPush(log.type, workDir)
+}
+
 const allowedMethods = 'GET,HEAD,OPTIONS,POST,PUT'
 
 createServer((req, res) => {
@@ -364,35 +406,10 @@ createServer((req, res) => {
       req.on('data', chunk => body += chunk)
       req.on('end', () => {
         try {
-          if (!body) throw new Error('400:No data')
-          const {type, data, signature} = JSON.parse(body)
           const typeMap = req.method == 'PUT' ? typesForPUT : typesForPOST
-          if (!(typeMap.has(type))) throw new Error('400:Invalid type')
-          let sig = signature.startsWith('0x') ? signature.slice(2, -2) : signature.slice(0, -2)
-          const v = parseInt(`0x${signature.slice(-2)}`) - 27
-          if (sig.length != 2 * 64) throw new Error(`400:Invalid signature length ${sig.length}`)
-          try { sig = secp256k1.Signature.fromCompact(sig).addRecoveryBit(v) }
-          catch (e) { throw new Error(`400:Invalid signature: ${e.message}`) }
-          const domainSeparator = domainSeparators.get(chainId)
-          const args = typeMap.get(type)
-          let message
-          try {
-            message = concatBytes(
-              Buffer.from('\x19\x01'), domainSeparator,
-              hashStruct(data, `${type}(${args})`)
-            )
-          }
-          catch (e) { throw new Error(`400:Invalid data: ${e.message}`) }
-          const msgHash = keccak256(message)
-          const sigPubkey = sig.recoverPublicKey(msgHash)
-          const verified = secp256k1.verify(sig, msgHash, sigPubkey.toRawBytes())
-          if (!verified) throw new Error(`400:Invalid signature`)
-          const pubkeyForKeccak = sigPubkey.toRawBytes(false).slice(1)
-          if (pubkeyForKeccak.length != 64) throw new Error(`500:Unexpected pubkey length ${toHex(pubkeyForKeccak)}`)
-          const sigAddress = `0x${toHex(keccak256(pubkeyForKeccak).slice(-20))}`
+          const { data, address: sigAddress } = verifyEIP712(body, typeMap)
           if (sigAddress !== address) throw new Error(`400:Address mismatch: ${sigAddress}`)
           const addressPath = `${workDir}/${chainId}/${address}`
-          const nData = normaliseData(data, args.split(','))
           if (type == 'CreateKey') {
             const index = parseInt(data.index)
             const nextIndex = getNextIndex(addressPath)
@@ -404,65 +421,78 @@ createServer((req, res) => {
             }
             const {signing: path} = pathsFromIndex(index)
             const pubkey = prv('pubkey', {chainId, address, path})
-            const pubkeyPath = `${addressPath}/${pubkey}`
+            const logPath = `${addressPath}/${pubkey}`
             const existing = !(nextIndex == null || nextIndex == index)
             if (!existing) {
               const timestamp = Math.floor(Date.now() / 1000).toString()
-              const log = {type, timestamp, ...nData}
-              writeFileSync(pubkeyPath, `${JSON.stringify(log)}\n`, {flag: 'a'})
-              gitCheck(['add', pubkeyPath], workDir, '', `failed to log ${type}`)
-              gitCheck(['diff', '--staged', '--numstat'], workDir,
-                output => (
-                  !output.trimEnd().includes('\n') &&
-                  output.trimEnd().split(/\s+/).join() == `1,0,${chainId}/${address}/${pubkey}`
-                ),
-                `unexpected diff logging ${type}`
-              )
-              gitPush(type, workDir)
+              addLogLine(logPath, {type, timestamp, ...data})
             }
             const statusCode = existing ? 200 : 201
             resHeaders['Content-Length'] = Buffer.byteLength(pubkey)
             res.writeHead(statusCode, resHeaders).end(pubkey)
           }
-          else if (type == 'GetDepositData') {
-            const pubkeyPath = `${addressPath}/${nData.pubkey}`
-            if (!existsSync(pubkeyPath)) throw new Error(`400:Unknown pubkey`)
-            const amountBytes = new DataView(new ArrayBuffer(8))
-            amountBytes.setBigUint64(0, BigInt(data.amountGwei), true)
-            const pubkeyBytes = hexToBytes(data.pubkey)
-            const pubkeyBytesPadded = new Uint8Array(64)
-            pubkeyBytesPadded.set(pubkeyBytes)
-            const wcAmountPadded = new Uint8Array(64)
-            wcAmountPadded.set(hexToBytes(data.withdrawalCredentials))
-            wcAmountPadded.set(amountBytes.buffer, 32)
-            const depositMessageRootPrehash = new Uint8Array(64)
-            depositMessageRootPrehash.set(sha256(pubkeyBytesPadded))
-            depositMessageRootPrehash.set(sha256(wcAmountPadded), 32)
-            const depositMessageRoot = sha256(depositMessageRootPrehash)
-            const depositDomainType = Uint8Array.from([3, 0, 0, 0])
-            const depositDataRootPrehash = new Uint8Array(64)
-            const forkDataRoot = sha256(depositDataRootPrehash)
-            const domain = concatBytes(depositDomainType, forkDataRoot.slice(0, 28))
-            const signingRoot = sha256(depositMessageRoot, domain)
+          else {
+            const logPath = `${addressPath}/${data.pubkey}`
+            if (!existsSync(logPath)) throw new Error(`400:Unknown pubkey`)
             const {signing: path} = pathsFromIndex(index)
             const pubkey = prv('pubkey', {chainId, address, path})
-            if (pubkey !== nData.pubkey) throw new Error('400:Wrong pubkey for index')
-            const signature = prv('sign', {chainId, address, path}, signingRoot)
-            const signatureBytes = hexToBytes(signature)
-            const signature2 = new Uint8Array(64)
-            signature2.set(signatureBytes.slice(64))
-            depositDataRootPrehash.set(depositMessageRoot)
-            depositDataRootPrehash.set(
-              sha256(concatBytes(sha256(signatureBytes.slice(0, 64)), sha256(signature2))),
-              32
-            )
-            const depositDataRoot = toHex(sha256(depositDataRootPrehash))
-            const body = JSON.stringify({ depositDataRoot, signature })
-            resHeaders['Content-Length'] = Buffer.byteLength(body)
-            res.writeHead(200, resHeaders).end(body)
-          }
-          else {
-            throw new Error('501')
+            if (pubkey !== data.pubkey) throw new Error('400:Wrong pubkey for index')
+            if (type == 'GetDepositData') {
+              const amountBytes = new DataView(new ArrayBuffer(8))
+              amountBytes.setBigUint64(0, BigInt(data.amountGwei), true)
+              const pubkeyBytes = hexToBytes(data.pubkey)
+              const pubkeyBytesPadded = new Uint8Array(64)
+              pubkeyBytesPadded.set(pubkeyBytes)
+              const wcAmountPadded = new Uint8Array(64)
+              wcAmountPadded.set(hexToBytes(data.withdrawalCredentials))
+              wcAmountPadded.set(amountBytes.buffer, 32)
+              const depositMessageRootPrehash = new Uint8Array(64)
+              depositMessageRootPrehash.set(sha256(pubkeyBytesPadded))
+              depositMessageRootPrehash.set(sha256(wcAmountPadded), 32)
+              const depositMessageRoot = sha256(depositMessageRootPrehash)
+              const depositDomainType = Uint8Array.from([3, 0, 0, 0])
+              const depositDataRootPrehash = new Uint8Array(64)
+              const forkDataRoot = sha256(depositDataRootPrehash)
+              const domain = concatBytes(depositDomainType, forkDataRoot.slice(0, 28))
+              const signingRoot = sha256(depositMessageRoot, domain)
+              const signature = prv('sign', {chainId, address, path}, signingRoot)
+              const signatureBytes = hexToBytes(signature)
+              const signature2 = new Uint8Array(64)
+              signature2.set(signatureBytes.slice(64))
+              depositDataRootPrehash.set(depositMessageRoot)
+              depositDataRootPrehash.set(
+                sha256(concatBytes(sha256(signatureBytes.slice(0, 64)), sha256(signature2))),
+                32
+              )
+              const depositDataRoot = toHex(sha256(depositDataRootPrehash))
+              const body = JSON.stringify({ depositDataRoot, signature })
+              resHeaders['Content-Length'] = Buffer.byteLength(body)
+              res.writeHead(200, resHeaders).end(body)
+            }
+            else if (type == 'SetEnabled') {
+              const logs = readFileSync(logPath, 'utf8').trimEnd().split('\n').map(JSON.parse)
+              if (!logs.length) throw new Error(`400:Pubkey has no logs`)
+              const lastLog = logs.at(-1)
+              if (!(parseInt(lastLog.timestamp) < parseInt(data.timestamp))) throw new Error(`400:Timestamp too early`)
+              if (!(parseint(data.timestamp) < (Date.now() / 1000))) throw new Error(`400:Timestamp in the future`)
+              const lastSetEnabled = logs.toReversed().find(({type}) => type == 'SetEnabled')
+              if (lastSetEnabled && lastSetEnabled.enabled == data.enabled) throw new Error(`400:Setting unchanged`)
+              addLogLine(logPath, {type, ...data})
+              resHeaders['Content-Length'] = 0
+              res.writeHead(201, resHeaders).end()
+            }
+            else if (type == 'SetFeeRecipient') {
+              throw new Error('501')
+            }
+            else if (type == 'SetGraffiti') {
+              throw new Error('501')
+            }
+            else if (type == 'Exit') {
+              throw new Error('501')
+            }
+            else {
+              throw new Error('400:Unknown instruction')
+            }
           }
         }
         catch (e) { handler(e) }
