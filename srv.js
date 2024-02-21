@@ -119,6 +119,15 @@ const prv = (cmd, {chainId, address, path}, input) => {
 //   bytes pubkey;
 // }
 //
+// struct AddValidators {
+//   uint256 timestamp;
+//   uint256 firstIndex;
+//   uint256 amountGwei;
+//   address feeRecipient;
+//   string graffiti;
+//   address[] withdrawalAddresses;
+// }
+//
 // For instruction as a JSON object, we use string for uint256 (suitable to
 // pass to BigInt), and use string (0x-prefixed lowercase hexstring) for bytes
 // and address.
@@ -195,6 +204,12 @@ const encodeData = (data, encodedType) => {
       throw new Error('not a hexstring')
     return hexToBytes(BigInt(data).toString(16).padStart(64, '0'))
   }
+  else if (encodedType.endsWith('[]')) {
+    const type = encodedType.slice(0, -2)
+    const bytes = new Uint8Array(data.length * 32)
+    data.forEach((x, i) => bytes.set(encodeData(x, type), i * 32))
+    return keccak256(bytes)
+  }
   else {
     const match = structTypeRegExp.exec(encodedType)
     if (!match) throw new Error('invalid encoded type')
@@ -237,6 +252,8 @@ const normaliseData = (data, args) => {
       case 'uint256':
         normalised[key] = BigInt(data[key]).toString()
         break
+      case 'address[]':
+        normalised[key] = data[key].map(a => a.toLowerCase())
       case 'bool':
       case 'string':
       default:
@@ -265,6 +282,11 @@ typesForPOST.set('SetEnabled',
 )
 typesForPOST.set('Exit',
   'uint256 timestamp,bytes pubkey'
+)
+typesForPOST.set('AddValidators',
+  'uint256 timestamp,uint256 firstIndex,' +
+  'uint256 amountGwei,address feeRecipient,string graffiti,' +
+  'address[] withdrawalAddresses'
 )
 
 const verifyEIP712 = (body, typeMap) => {
@@ -307,6 +329,37 @@ const addLogLine = (logPath, log) => {
     `unexpected diff logging ${log.type}`
   )
   gitPush(log.type, workDir)
+}
+
+const computeDepositData = ({amountGwei, pubkey, withdrawalCredentials, chainId, address, path}) => {
+  const amountBytes = new DataView(new ArrayBuffer(8))
+  amountBytes.setBigUint64(0, BigInt(amountGwei), true)
+  const pubkeyBytes = hexToBytes(pubkey)
+  const pubkeyBytesPadded = new Uint8Array(64)
+  pubkeyBytesPadded.set(pubkeyBytes)
+  const wcAmountPadded = new Uint8Array(64)
+  wcAmountPadded.set(hexToBytes(withdrawalCredentials))
+  wcAmountPadded.set(amountBytes.buffer, 32)
+  const depositMessageRootPrehash = new Uint8Array(64)
+  depositMessageRootPrehash.set(sha256(pubkeyBytesPadded))
+  depositMessageRootPrehash.set(sha256(wcAmountPadded), 32)
+  const depositMessageRoot = sha256(depositMessageRootPrehash)
+  const depositDomainType = Uint8Array.from([3, 0, 0, 0])
+  const depositDataRootPrehash = new Uint8Array(64)
+  const forkDataRoot = sha256(depositDataRootPrehash)
+  const domain = concatBytes(depositDomainType, forkDataRoot.slice(0, 28))
+  const signingRoot = sha256(depositMessageRoot, domain)
+  const signature = prv('sign', {chainId, address, path}, signingRoot)
+  const signatureBytes = hexToBytes(signature)
+  const signature2 = new Uint8Array(64)
+  signature2.set(signatureBytes.slice(64))
+  depositDataRootPrehash.set(depositMessageRoot)
+  depositDataRootPrehash.set(
+    sha256(concatBytes(sha256(signatureBytes.slice(0, 64)), sha256(signature2))),
+    32
+  )
+  const depositDataRoot = toHex(sha256(depositDataRootPrehash))
+  return {depositDataRoot, signature}
 }
 
 const allowedMethods = 'GET,HEAD,OPTIONS,POST,PUT'
@@ -410,7 +463,51 @@ createServer((req, res) => {
           const { data, address: sigAddress } = verifyEIP712(body, typeMap)
           if (sigAddress !== address) throw new Error(`400:Address mismatch: ${sigAddress}`)
           const addressPath = `${workDir}/${chainId}/${address}`
-          if (type == 'CreateKey') {
+          if (type == 'AddValidators') {
+            const firstIndex = parseInt(data.firstIndex)
+            const nextIndex = getNextIndex(addressPath)
+            if (!(firstIndex <= nextIndex)) throw new Error(`400:First index unknown or not next`)
+            if (nextIndex === null) {
+              const result = prv('generate', {chainId, address})
+              if (result != 'created') throw new Error(`500:Unexpected generate result`)
+              mkdirSync(addressPath, {recursive: true})
+            }
+            const newLogs = {}
+            const timestamp = parseInt(data.timestamp)
+            if (!(timestamp <= (Date.now() / 1000))) throw new Error(`400:Timestamp in the future`)
+            let index = firstIndex
+            for (const withdrawalAddress of data.withdrawalAddresses) {
+              const existing = index < nextIndex
+              const {signing: path} = pathsFromIndex(index)
+              const pubkey = prv('pubkey', {chainId, address, path})
+              const logPath = `${addressPath}/${pubkey}`
+              const newLogsForPubkey = []
+              newLogs[logPath] = newLogsForPubkey
+              if (!existing)
+                newLogsForPubkey.push({type: 'CreateKey', timestamp: timestamp.toString(), index: index.toString()})
+              const withdrawalCredentials = new Uint8Array(32)
+              withdrawalCredentials[0] = 1
+              withdrawalCredentials.set(hexToBytes(withdrawalAddress), 12)
+              const depositData = computeDepositData({
+                amountGwei: data.amountGwei, pubkey, withdrawalCredentials, chainId, address, path
+              })
+              const logs = existing && readFileSync(logPath, 'utf8').trimEnd().split('\n').map(JSON.parse)
+              if (logs && !(parseInt(logs.at(-1).timestamp) <= timestamp)) throw new Error(`400:Timestamp too early`)
+              if (logs?.some(({type}) => type == 'Exit')) throw new Error(`400:Already exited`)
+              for (const [type, value] of [['SetFeeRecipient', data.feeRecipient],
+                                           ['SetGraffiti', data.graffiti],
+                                           ['SetEnabled', true]]) {
+                const key = type.slice(3).toLowerCase()
+                const lastLog = logs?.toReversed().find(({type: logType}) => logType == type)
+                if (lastLog?.[key] === value) throw new Error(`400:Setting unchanged`)
+                newLogsForPubkey.push({type, timestamp: timestamp.toString(), [key]: value})
+              }
+            }
+            // TODO: add and push all the logs
+            // TODO: return body as object mapping pubkeys to deposit data
+            throw new Error('501')
+          }
+          else if (type == 'CreateKey') {
             const index = parseInt(data.index)
             const nextIndex = getNextIndex(addressPath)
             if (!(index <= nextIndex)) throw new Error(`400:Index unknown or not next`)
@@ -438,34 +535,8 @@ createServer((req, res) => {
             const pubkey = prv('pubkey', {chainId, address, path})
             if (pubkey !== data.pubkey) throw new Error('400:Wrong pubkey for index')
             if (type == 'GetDepositData') {
-              const amountBytes = new DataView(new ArrayBuffer(8))
-              amountBytes.setBigUint64(0, BigInt(data.amountGwei), true)
-              const pubkeyBytes = hexToBytes(data.pubkey)
-              const pubkeyBytesPadded = new Uint8Array(64)
-              pubkeyBytesPadded.set(pubkeyBytes)
-              const wcAmountPadded = new Uint8Array(64)
-              wcAmountPadded.set(hexToBytes(data.withdrawalCredentials))
-              wcAmountPadded.set(amountBytes.buffer, 32)
-              const depositMessageRootPrehash = new Uint8Array(64)
-              depositMessageRootPrehash.set(sha256(pubkeyBytesPadded))
-              depositMessageRootPrehash.set(sha256(wcAmountPadded), 32)
-              const depositMessageRoot = sha256(depositMessageRootPrehash)
-              const depositDomainType = Uint8Array.from([3, 0, 0, 0])
-              const depositDataRootPrehash = new Uint8Array(64)
-              const forkDataRoot = sha256(depositDataRootPrehash)
-              const domain = concatBytes(depositDomainType, forkDataRoot.slice(0, 28))
-              const signingRoot = sha256(depositMessageRoot, domain)
-              const signature = prv('sign', {chainId, address, path}, signingRoot)
-              const signatureBytes = hexToBytes(signature)
-              const signature2 = new Uint8Array(64)
-              signature2.set(signatureBytes.slice(64))
-              depositDataRootPrehash.set(depositMessageRoot)
-              depositDataRootPrehash.set(
-                sha256(concatBytes(sha256(signatureBytes.slice(0, 64)), sha256(signature2))),
-                32
-              )
-              const depositDataRoot = toHex(sha256(depositDataRootPrehash))
-              const body = JSON.stringify({ depositDataRoot, signature })
+              const depositData = computeDepositData(...data, chainId, address, path)
+              const body = JSON.stringify(depositData)
               resHeaders['Content-Length'] = Buffer.byteLength(body)
               res.writeHead(200, resHeaders).end(body)
             }
