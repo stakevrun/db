@@ -414,7 +414,7 @@ createServer((req, res) => {
             const index = parseInt(data.index)
             const nextIndex = getNextIndex(addressPath)
             if (!(index <= nextIndex)) throw new Error(`400:Index unknown or not next`)
-            if (nextIndex == null) {
+            if (nextIndex === null) {
               const result = prv('generate', {chainId, address})
               if (result != 'created') throw new Error(`500:Unexpected generate result`)
               mkdirSync(addressPath, {recursive: true})
@@ -473,8 +473,8 @@ createServer((req, res) => {
               const logs = readFileSync(logPath, 'utf8').trimEnd().split('\n').map(JSON.parse)
               if (!logs.length) throw new Error(`400:Pubkey has no logs`)
               const lastLog = logs.at(-1)
-              if (!(parseInt(lastLog.timestamp) < parseInt(data.timestamp))) throw new Error(`400:Timestamp too early`)
-              if (!(parseint(data.timestamp) < (Date.now() / 1000))) throw new Error(`400:Timestamp in the future`)
+              if (!(parseInt(lastLog.timestamp) <= parseInt(data.timestamp))) throw new Error(`400:Timestamp too early`)
+              if (!(parseint(data.timestamp) <= (Date.now() / 1000))) throw new Error(`400:Timestamp in the future`)
               if (logs.some(({type}) => type == 'Exit')) throw new Error(`400:Already exited`)
               if (['SetEnabled', 'SetFeeRecipient', 'SetGraffiti'].includes(type)) {
                 const key = type.slice(3).toLowerCase()
