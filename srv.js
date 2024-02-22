@@ -1,4 +1,4 @@
-import { gitCheck, gitPush, workDir, chainIds, addressRe, addressRegExp } from './lib.js'
+import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRe, addressRegExp } from './lib.js'
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, existsSync, readdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { createServer } from 'node:http'
@@ -40,6 +40,8 @@ const prv = (cmd, {chainId, address, path}, input) => {
   else
     throw new Error(`500:prv failed: status ${res.status}, stdout '${res.stdout}', stderr '${res.stderr}'`)
 }
+
+ensureDirs()
 
 // srv repository database layout:
 // ${chainId}/${address}/${pubkey} : JSON lines of log entries

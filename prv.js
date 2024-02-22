@@ -4,8 +4,10 @@ process.setUncaughtExceptionCaptureCallback((e) => {
 
 import { randomSeed, privkeyFromPath, pubkeyFromPrivkey, generateKeystore, toHex } from './sig.js'
 import { bls12_381 } from '@noble/curves/bls12-381'
-import { gitCheck, gitPush, workDir, chainIds, addressRegExp } from './lib.js'
+import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRegExp } from './lib.js'
 import { mkdirSync, existsSync, writeFileSync, readFileSync } from 'node:fs'
+
+ensureDirs()
 
 // prv repository database layout:
 // ${chainId}/${address} : 32 bytes (no encoding)
