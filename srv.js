@@ -21,7 +21,7 @@ const pathsFromIndex = index => {
 
 const errorPrefix = 'error: '
 const prv = (cmd, {chainId, address, path}, input) => {
-  const env = { COMMAND: cmd, CHAINID: chainId, ADDRESS: address }
+  const env = {COMMAND: cmd, CHAINID: chainId, ADDRESS: address}
   if (path) env.KEYPATH = path
   const res = spawnSync('systemd-run', [
     '--quiet', '--collect', '--same-dir',
@@ -32,7 +32,7 @@ const prv = (cmd, {chainId, address, path}, input) => {
     '--property=StateDirectory=vrunprv', '--setenv=STATE_DIR=/var/lib/vrunprv',
     '--setenv=COMMAND', '--setenv=CHAINID', '--setenv=ADDRESS', '--setenv=KEYPATH',
     'node', 'prv'
-  ], { env, input })
+  ], {env, input})
   if (res.status === 0)
     return res.stdout.toString().trimEnd()
   else if (res.stdout.toString().startsWith(errorPrefix))
@@ -77,7 +77,7 @@ const prv = (cmd, {chainId, address, path}, input) => {
 // the body content-type should be application/json
 // the body should be JSON in the following format
 //
-// { type: string, data: <object>, signature: string }
+// {type: string, data: <object>, signature: string}
 //
 // where signature is an EIP-712 signature over type{...data}
 // encoded as a compact 0x-prefixed hexstring
@@ -137,11 +137,11 @@ const prv = (cmd, {chainId, address, path}, input) => {
 // Successful responses will have status 200 or 201 and an empty body or an
 // application/json body for the following requests:
 //
-// CreateKey: { index: number, pubkey: string }
+// CreateKey: {index: number, pubkey: string}
 // where pubkey is the 0x-prefixed hexstring encoding the created key's pubkey
 // and index is the index for that pubkey.
 //
-// GetDepositData: { depositDataRoot: string, signature: string }
+// GetDepositData: {depositDataRoot: string, signature: string}
 // where depositDataRoot is a 0x-prefixed hexstring of 32 bytes, and
 // signature is a 0x-prefixed hexstring encoding a signature over
 // depositDataRoot.
@@ -315,7 +315,7 @@ const verifyEIP712 = (body, typeMap) => {
   const pubkeyForKeccak = sigPubkey.toRawBytes(false).slice(1)
   if (pubkeyForKeccak.length != 64) throw new Error(`500:Unexpected pubkey length ${toHex(pubkeyForKeccak)}`)
   const address = `0x${toHex(keccak256(pubkeyForKeccak).slice(-20))}`
-  return { data: normaliseData(data, args.split(',')), address }
+  return {data: normaliseData(data, args.split(',')), address}
 }
 
 const addLogLine = (logPath, log) => {
@@ -460,7 +460,7 @@ createServer((req, res) => {
       req.on('end', () => {
         try {
           const typeMap = req.method == 'PUT' ? typesForPUT : typesForPOST
-          const { data, address: sigAddress } = verifyEIP712(body, typeMap)
+          const {data, address: sigAddress} = verifyEIP712(body, typeMap)
           if (sigAddress !== address) throw new Error(`400:Address mismatch: ${sigAddress}`)
           const addressPath = `${workDir}/${chainId}/${address}`
           if (type == 'AddValidators') {

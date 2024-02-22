@@ -239,9 +239,9 @@ export const generateKeystore = ({sk, path, pubkey}) => {
 
   const keystore = {
     crypto: {
-      kdf: { function: 'scrypt', params: { dklen, n, p, r, salt }, message: '' },
-      checksum: { function: 'sha256', params: {}, message: checksumMessage },
-      cipher: { function: algorithm, params: { iv }, message: cipherMessage },
+      kdf: {function: 'scrypt', params: {dklen, n, p, r, salt}, message: ''},
+      checksum: {function: 'sha256', params: {}, message: checksumMessage},
+      cipher: {function: algorithm, params: {iv}, message: cipherMessage},
     },
     path,
     pubkey,
