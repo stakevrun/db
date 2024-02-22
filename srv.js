@@ -473,6 +473,7 @@ createServer((req, res) => {
               mkdirSync(addressPath, {recursive: true})
             }
             const newLogs = {}
+            const depositDataByPubkey = {}
             const timestamp = parseInt(data.timestamp)
             if (!(timestamp <= (Date.now() / 1000))) throw new Error(`400:Timestamp in the future`)
             let index = firstIndex
@@ -491,6 +492,7 @@ createServer((req, res) => {
               const depositData = computeDepositData({
                 amountGwei: data.amountGwei, pubkey, withdrawalCredentials, chainId, address, path
               })
+              depositDataByPubkey[pubkey] = depositData
               const logs = existing && readFileSync(logPath, 'utf8').trimEnd().split('\n').map(JSON.parse)
               if (logs && !(parseInt(logs.at(-1).timestamp) <= timestamp)) throw new Error(`400:Timestamp too early`)
               if (logs?.some(({type}) => type == 'Exit')) throw new Error(`400:Already exited`)
@@ -503,9 +505,25 @@ createServer((req, res) => {
                 newLogsForPubkey.push({type, timestamp: timestamp.toString(), [key]: value})
               }
             }
-            // TODO: add and push all the logs
-            // TODO: return body as object mapping pubkeys to deposit data
-            throw new Error('501')
+            for (const [logPath, logs] of Object.entries(newLogsForPubkey)) {
+              writeFileSync(logPath, logs.map(log => `${JSON.stringify(log)}\n`).join(''), {flag: 'a'})
+              gitCheck(['add', logPath], workDir, '', `failed to add logs`)
+            }
+            const lineRegExp = new RegExp(`[34],0,${chainId}/${address}/${pubkeyRe('')}`)
+            gitCheck(['diff', '--staged', '--numstat'], workDir,
+              output => {
+                const lines = output.trimEnd().split('\n')
+                if (lines.length != withdrawalAddresses.length) return false
+                const pubkeys = lines.map(line => lineRegExp.exec(line)?.groups.pubkey)
+                return (Object.keys(depositDataByPubkey).every(x => pubkeys.includes(x)) &&
+                        pubkeys.every(x => x in depositDataByPubkey))
+              },
+              `unexpected diff adding logs`
+            )
+            gitPush(type, workDir)
+            const body = JSON.stringify(depositDataByPubkey)
+            resHeaders['Content-Length'] = Buffer.byteLength(body)
+            res.writeHead(201, resHeaders).end(body)
           }
           else if (type == 'CreateKey') {
             const index = parseInt(data.index)
