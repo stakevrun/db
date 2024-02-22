@@ -391,13 +391,13 @@ createServer((req, res) => {
     else {
       res.writeHead(statusCode, resHeaders).end()
     }
-    console.warn(`${req.method} ${req.path} -> ${statusCode}: ${body || ''}`)
+    console.warn(`${req.method} ${req.url} -> ${statusCode}: ${body || ''}`)
   }
   function finish(statusCode, body) {
     resHeaders['Content-Length'] = Buffer.byteLength(body)
     res.writeHead(statusCode, resHeaders)
     req.method == 'HEAD' ? res.end() : res.end(body)
-    console.log(`${req.method} ${req.path} -> ${statusCode}: ${body}`)
+    console.log(`${req.method} ${req.url} -> ${statusCode}: ${body}`)
   }
   try {
     resHeaders['Content-Type'] = 'application/json'
