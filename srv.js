@@ -320,12 +320,14 @@ const verifyEIP712 = ({body, domainSeparator, typeMap}) => {
 }
 
 const addLogLine = (logPath, log) => {
+  const [workDirFromPath, repoLogPath] = logPath.split('/', 2)
+  if (workDirFromPath != workDir) throw new Error('500:Unexpected workDir mismatch')
   writeFileSync(logPath, `${JSON.stringify(log)}\n`, {flag: 'a'})
-  gitCheck(['add', logPath], workDir, '', `failed to log ${log.type}`)
+  gitCheck(['add', repoLogPath], workDir, '', `failed to log ${log.type}`)
   gitCheck(['diff', '--staged', '--numstat'], workDir,
     output => (
       !output.trimEnd().includes('\n') &&
-      output.trimEnd().split(/\s+/).join() == `1,0,${chainId}/${address}/${pubkey}`
+      output.trimEnd().split(/\s+/).join() == `1,0,${repoLogPath}`
     ),
     `unexpected diff logging ${log.type}`
   )
