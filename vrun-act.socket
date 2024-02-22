@@ -1,0 +1,2 @@
+[Socket]
+ListenFIFO=/run/vrun-act.fifo

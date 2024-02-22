@@ -1,0 +1,12 @@
+[Unit]
+Description=vrün db actor
+
+[Service]
+ExecStart=node act
+WorkingDirectory=/usr/share/vrün
+Type=exec
+DynamicUser=yes
+StateDirectory=vrunsrv
+Environment=STATE_DIR=/var/lib/vrunsrv
+StandardInput=socket
+StandardOutput=journal
