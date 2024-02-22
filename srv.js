@@ -291,7 +291,7 @@ typesForPOST.set('AddValidators',
   'address[] withdrawalAddresses'
 )
 
-const verifyEIP712 = ({chainId, address, body, typeMap}) => {
+const verifyEIP712 = ({body, domainSeparator, typeMap}) => {
   if (!body) throw new Error('400:No data')
   const {type, data, signature} = JSON.parse(body)
   if (!(typeMap.has(type))) throw new Error('400:Invalid type')
@@ -301,7 +301,6 @@ const verifyEIP712 = ({chainId, address, body, typeMap}) => {
   if (sig.length != 2 * 64) throw new Error(`400:Invalid signature length ${sig.length}`)
   try { sig = secp256k1.Signature.fromCompact(sig).addRecoveryBit(v) }
   catch (e) { throw new Error(`400:Invalid signature: ${e.message}`) }
-  const domainSeparator = domainSeparators.get(chainId)
   let message
   try {
     message = concatBytes(
@@ -462,7 +461,8 @@ createServer((req, res) => {
       req.on('end', () => {
         try {
           const typeMap = req.method == 'PUT' ? typesForPUT : typesForPOST
-          const {data, address: sigAddress} = verifyEIP712({chainId, address, body, typeMap})
+          const domainSeparator = domainSeparators.get(chainId)
+          const {data, address: sigAddress} = verifyEIP712({domainSeparator, body, typeMap})
           if (sigAddress !== address) throw new Error(`400:Address mismatch: ${sigAddress}`)
           const addressPath = `${workDir}/${chainId}/${address}`
           if (type == 'AddValidators') {
