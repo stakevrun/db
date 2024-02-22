@@ -1,6 +1,6 @@
-import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRe, addressRegExp } from './lib.js'
+import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRe, addressRegExp, readJSONL } from './lib.js'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, existsSync, readdirSync, writeFileSync, readFileSync } from 'node:fs'
+import { mkdirSync, existsSync, readdirSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { sha256 } from "ethereum-cryptography/sha256.js";
 import { keccak256 } from "ethereum-cryptography/keccak.js";
@@ -425,7 +425,7 @@ createServer((req, res) => {
         if (!existsSync(addressPath)) throw new Error('404:Unknown address')
         const pubkey = [2, 3].map(i => match.groups[`pubkey${i}`]).find(x => x)
         const logPath = `${addressPath}/${pubkey}`
-        const logs = readFileSync(logPath, 'utf8').trimEnd().split('\n').map(JSON.parse)
+        const logs = readJSONL(logPath)
         if (match.groups.i2 == 'length') {
           const body = logs.length.toString()
           resHeaders['Content-Length'] = Buffer.byteLength(body)
@@ -495,7 +495,7 @@ createServer((req, res) => {
                 amountGwei: data.amountGwei, pubkey, withdrawalCredentials, chainId, address, path
               })
               depositDataByPubkey[pubkey] = depositData
-              const logs = existing && readFileSync(logPath, 'utf8').trimEnd().split('\n').map(JSON.parse)
+              const logs = existing && readJSONL(logPath)
               if (logs && !(parseInt(logs.at(-1).timestamp) <= timestamp)) throw new Error(`400:Timestamp too early`)
               if (logs?.some(({type}) => type == 'Exit')) throw new Error(`400:Already exited`)
               for (const [type, value] of [['SetFeeRecipient', data.feeRecipient],
@@ -561,7 +561,7 @@ createServer((req, res) => {
               res.writeHead(200, resHeaders).end(body)
             }
             else {
-              const logs = readFileSync(logPath, 'utf8').trimEnd().split('\n').map(JSON.parse)
+              const logs = readJSONL(logPath)
               if (!logs.length) throw new Error(`400:Pubkey has no logs`)
               const lastLog = logs.at(-1)
               if (!(parseInt(lastLog.timestamp) <= parseInt(data.timestamp))) throw new Error(`400:Timestamp too early`)

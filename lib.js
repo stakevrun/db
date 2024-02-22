@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 
 export const chainIds = {
   1: 'mainnet',
@@ -8,6 +8,9 @@ export const chainIds = {
 
 export const addressRe = '0x[0-9a-f]{40}'
 export const addressRegExp = new RegExp(addressRe)
+
+export const readJSONL = (path) =>
+  readFileSync(path, 'utf8').trimEnd().split('\n').map(JSON.parse)
 
 const stateDir = process.env.STATE_DIR
 const bareDir = `${stateDir}/bare`
