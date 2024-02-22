@@ -389,6 +389,13 @@ createServer((req, res) => {
     else {
       res.writeHead(statusCode, resHeaders).end()
     }
+    console.warn(`${req.method} ${req.path} -> ${statusCode}: ${body || ''}`)
+  }
+  function finish(statusCode, body) {
+    resHeaders['Content-Length'] = Buffer.byteLength(body)
+    res.writeHead(statusCode, resHeaders)
+    req.method == 'HEAD' ? res.end() : res.end(body)
+    console.log(`${req.method} ${req.path} -> ${statusCode}: ${body}`)
   }
   try {
     resHeaders['Content-Type'] = 'application/json'
@@ -403,10 +410,7 @@ createServer((req, res) => {
       const address = match.groups.address
       const addressPath = `${workDir}/${chainId}/${address}`
       if (match.groups.i0 == 'nextindex') {
-        const body = (+getNextIndex(addressPath)).toString()
-        resHeaders['Content-Length'] = Buffer.byteLength(body)
-        res.writeHead(200, resHeaders)
-        req.method == 'HEAD' ? res.end() : res.end(body)
+        finish(200, (+getNextIndex(addressPath)).toString())
       }
       else if (match.groups.i1 == 'pubkey') {
         if (!existsSync(addressPath)) throw new Error('404:Unknown address')
@@ -415,10 +419,7 @@ createServer((req, res) => {
         const {signing: path} = pathsFromIndex(index)
         const pubkey = prv('pubkey', {chainId, address, path})
         if (!existsSync(`${addressPath}/${pubkey}`)) throw new Error(`400:Unknown index`)
-        const body = pubkey
-        resHeaders['Content-Length'] = Buffer.byteLength(body)
-        res.writeHead(200, resHeaders)
-        req.method == 'HEAD' ? res.end() : res.end(body)
+        finish(200, pubkey)
       }
       else {
         if (!existsSync(addressPath)) throw new Error('404:Unknown address')
@@ -426,19 +427,13 @@ createServer((req, res) => {
         const logPath = `${addressPath}/${pubkey}`
         const logs = readJSONL(logPath)
         if (match.groups.i2 == 'length') {
-          const body = logs.length.toString()
-          resHeaders['Content-Length'] = Buffer.byteLength(body)
-          res.writeHead(200, resHeaders)
-          req.method == 'HEAD' ? res.end() : res.end(body)
+          finish(200, logs.length.toString())
         }
         else if (match.groups.i3 == 'logs') {
           const start = url.searchParams.get('start')
           const endInt = parseInt(url.searchParams.get('end'))
           const end = Number.isNaN(endInt) ? logs.length : endInt
-          const body = JSON.stringify(logs.slice(start, end))
-          resHeaders['Content-Length'] = Buffer.byteLength(body)
-          res.writeHead(200, resHeaders)
-          req.method == 'HEAD' ? res.end() : res.end(body)
+          finish(200, JSON.stringify(logs.slice(start, end)))
         }
         else {
           throw new Error('404:Unexpected route')
@@ -523,9 +518,7 @@ createServer((req, res) => {
               `unexpected diff adding logs`
             )
             gitPush(type, workDir)
-            const body = JSON.stringify(depositDataByPubkey)
-            resHeaders['Content-Length'] = Buffer.byteLength(body)
-            res.writeHead(201, resHeaders).end(body)
+            finish(201, JSON.stringify(depositDataByPubkey))
           }
           else if (type == 'CreateKey') {
             const index = parseInt(data.index)
@@ -545,8 +538,7 @@ createServer((req, res) => {
               addLogLine(logPath, {type, timestamp, ...data})
             }
             const statusCode = existing ? 200 : 201
-            resHeaders['Content-Length'] = Buffer.byteLength(pubkey)
-            res.writeHead(statusCode, resHeaders).end(pubkey)
+            finish(statusCode, pubkey)
           }
           else {
             const logPath = `${addressPath}/${data.pubkey}`
@@ -556,9 +548,7 @@ createServer((req, res) => {
             if (pubkey !== data.pubkey) throw new Error('400:Wrong pubkey for index')
             if (type == 'GetDepositData') {
               const depositData = computeDepositData(...data, chainId, address, path)
-              const body = JSON.stringify(depositData)
-              resHeaders['Content-Length'] = Buffer.byteLength(body)
-              res.writeHead(200, resHeaders).end(body)
+              finish(200, JSON.stringify(depositData))
             }
             else {
               const logs = readJSONL(logPath)
@@ -578,8 +568,7 @@ createServer((req, res) => {
               const log = {type, ...data}
               delete log.pubkey
               addLogLine(logPath, log)
-              resHeaders['Content-Length'] = 0
-              res.writeHead(201, resHeaders).end()
+              finish(201, '')
             }
           }
         }
