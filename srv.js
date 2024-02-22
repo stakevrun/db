@@ -291,7 +291,7 @@ typesForPOST.set('AddValidators',
   'address[] withdrawalAddresses'
 )
 
-const verifyEIP712 = (body, typeMap) => {
+const verifyEIP712 = ({chainId, address, body, typeMap}) => {
   if (!body) throw new Error('400:No data')
   const {type, data, signature} = JSON.parse(body)
   if (!(typeMap.has(type))) throw new Error('400:Invalid type')
@@ -462,7 +462,7 @@ createServer((req, res) => {
       req.on('end', () => {
         try {
           const typeMap = req.method == 'PUT' ? typesForPUT : typesForPOST
-          const {data, address: sigAddress} = verifyEIP712(body, typeMap)
+          const {data, address: sigAddress} = verifyEIP712({chainId, address, body, typeMap})
           if (sigAddress !== address) throw new Error(`400:Address mismatch: ${sigAddress}`)
           const addressPath = `${workDir}/${chainId}/${address}`
           if (type == 'AddValidators') {
