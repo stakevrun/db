@@ -316,7 +316,7 @@ const verifyEIP712 = ({body, domainSeparator, typeMap}) => {
   const pubkeyForKeccak = sigPubkey.toRawBytes(false).slice(1)
   if (pubkeyForKeccak.length != 64) throw new Error(`500:Unexpected pubkey length ${toHex(pubkeyForKeccak)}`)
   const address = `0x${toHex(keccak256(pubkeyForKeccak).slice(-20))}`
-  return {data: normaliseData(data, args.split(',')), address}
+  return {type, data: normaliseData(data, args.split(',')), address}
 }
 
 const addLogLine = (logPath, log) => {
@@ -457,7 +457,7 @@ createServer((req, res) => {
         try {
           const typeMap = req.method == 'PUT' ? typesForPUT : typesForPOST
           const domainSeparator = domainSeparators.get(chainId)
-          const {data, address: sigAddress} = verifyEIP712({domainSeparator, body, typeMap})
+          const {type, data, address: sigAddress} = verifyEIP712({domainSeparator, body, typeMap})
           if (sigAddress !== address) throw new Error(`400:Address mismatch: ${sigAddress}`)
           const addressPath = `${workDir}/${chainId}/${address}`
           if (type == 'AddValidators') {
