@@ -48,7 +48,7 @@ const exitStatuses = [
   'withdrawal_done'
 ]
 
-function computeDiscrepancy(vcState) {
+function computeDiscrepancies(vcState) {
   gitCheck(['status', '--porcelain'], workDir, '', 'work directory not clean')
   const discrepancies = []
   const chainIds = readdirSync(workDir)
@@ -92,7 +92,7 @@ function computeDiscrepancy(vcState) {
 
 let vcsConfig
 let vcState
-let discrepancy
+let discrepancies
 
 function ensureVcsConfig() {
   if (!vcsConfig)
@@ -105,17 +105,25 @@ async function ensureVcState() {
     vcState = await computeVcState(vcsConfig)
 }
 
+async function ensureDiscrepancies() {
+  await ensureVcState()
+  if (!discrepancies)
+    discrepancies = computeDiscrepancies(vcState)
+}
+
 createInterface({input: process.stdin}).on('line', async (line) => {
   switch (line) {
-    case 'd':
+    case 'p':
       console.log(`Got request to print discrepancies`)
-      await ensureVcState()
-      if (!vcState) throw new Error(`Failed to produce vcState`)
+      await ensureDiscrepancies()
       console.log(`Discrepancies:`)
-      computeDiscrepancy(vcState).forEach(x =>
-        console.log(JSON.stringify(x))
-      )
+      discrepancies.forEach((x, i) => console.log(`${i}: ${JSON.stringify(x)}`))
       console.log(`End of Discrepancies`)
+      break
+    case 'd':
+      console.log(`Got request to refresh discrepancies`)
+      discrepancies = undefined
+      await ensureDiscrepancies()
       break
     case 'c':
       console.log(`Got request to refresh config`)
@@ -128,7 +136,13 @@ createInterface({input: process.stdin}).on('line', async (line) => {
       await ensureVcState()
       break
     default:
-      console.warn(`Unknown command '${line}'`)
+      const [f, i] = line.split(' ', 2)
+      if (f === 'f' && 0 <= parseInt(i) && i < discrepancies?.length) {
+        const d = discrepancies[i]
+        console.log(`Got request to fix discrepancy ${i}: ${JSON.stringify(d)}`)
+      }
+      else
+        console.warn(`Unknown command '${line}'`)
   }
 })
 
