@@ -6,6 +6,8 @@ ExecStart=node act
 WorkingDirectory=/usr/share/vrün
 Type=exec
 DynamicUser=yes
+User=vrun-srv
+Group=vrun-srv
 StateDirectory=vrunsrv
 Environment=STATE_DIR=/var/lib/vrunsrv
 StandardInput=socket
