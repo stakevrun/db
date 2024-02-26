@@ -343,7 +343,7 @@ const computeDepositData = ({amountGwei, pubkey, withdrawalCredentials, chainId,
   pubkeyBytesPadded.set(pubkeyBytes)
   const wcAmountPadded = new Uint8Array(64)
   wcAmountPadded.set(hexToBytes(withdrawalCredentials))
-  wcAmountPadded.set(amountBytes.buffer, 32)
+  wcAmountPadded.set(new Uint8Array(amountBytes.buffer), 32)
   const depositMessageRootPrehash = new Uint8Array(64)
   depositMessageRootPrehash.set(sha256(pubkeyBytesPadded))
   depositMessageRootPrehash.set(sha256(wcAmountPadded), 32)
