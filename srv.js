@@ -422,7 +422,7 @@ createServer((req, res) => {
         const {signing: path} = pathsFromIndex(index)
         const pubkey = prv('pubkey', {chainId, address, path})
         if (!existsSync(`${addressPath}/${pubkey}`)) throw new Error(`400:Unknown index`)
-        finish(200, pubkey)
+        finish(200, JSON.stringify(pubkey))
       }
       else {
         if (!existsSync(addressPath)) throw new Error('404:Unknown address')
@@ -541,7 +541,7 @@ createServer((req, res) => {
               addLogLine(logPath, {type, timestamp, ...data})
             }
             const statusCode = existing ? 200 : 201
-            finish(statusCode, pubkey)
+            finish(statusCode, JSON.stringify(pubkey))
           }
           else {
             const logPath = `${addressPath}/${data.pubkey}`
