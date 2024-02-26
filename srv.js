@@ -550,7 +550,7 @@ createServer((req, res) => {
             const pubkey = prv('pubkey', {chainId, address, path})
             if (pubkey !== data.pubkey) throw new Error('400:Wrong pubkey for index')
             if (type == 'GetDepositData') {
-              const depositData = computeDepositData(...data, chainId, address, path)
+              const depositData = computeDepositData({...data, chainId, address, path})
               finish(200, JSON.stringify(depositData))
             }
             else {
