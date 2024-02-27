@@ -492,7 +492,7 @@ createServer((req, res) => {
             gitCheck(['diff', '--staged', '--numstat'], workDir,
               output => {
                 const lines = output.trimEnd().split('\n')
-                if (lines.length != withdrawalAddresses.length) return false
+                if (lines.length != data.withdrawalAddresses.length) return false
                 const pubkeys = lines.map(line => lineRegExp.exec(line)?.groups.pubkey)
                 return (Object.keys(depositDataByPubkey).every(x => pubkeys.includes(x)) &&
                         pubkeys.every(x => x in depositDataByPubkey))
