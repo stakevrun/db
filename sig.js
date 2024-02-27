@@ -203,12 +203,18 @@ export const pubkeyFromPrivkey = (sk) => {
 
 // ERC-2335
 
-const password = 'Never Gonna Give You Up'
+const nonPasswordCodePoint = n =>
+  n <= 0x1f || 0x80 <= n && n <= 0x9f || n == 0x7f ||
+  0x2fe0 <= n && n <= 0x2fef || 0xd7ff < n
 
-export const generateKeystore = ({sk, path, pubkey}) => {
+export const generateKeystore = ({sk, path, pubkey, password}) => {
   pubkey ??= pubkeyFromPrivkey(sk)
   if (typeof pubkey != 'string') pubkey = toHex(pubkey)
   else if (pubkey.startsWith('0x')) pubkey = pubkey.slice(2)
+
+  if (typeof password != 'string' ||
+      [...password].some(s => nonPasswordCodePoint(s.codePointAt(0))))
+    throw new Error(`invalid password`)
 
   const saltBytes = randomBytes(32)
   const salt = toHex(saltBytes)

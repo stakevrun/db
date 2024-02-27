@@ -19,10 +19,11 @@ ensureDirs()
 // CHAINID = decimal string identifying the chain
 // ADDRESS = hexstring indicating the seed's owner
 // KEYPATH = string indicating the path for key derivation
+// KEYPASS = string to use as password for the keystore
 //
 // generate: ensure the seed for ADDRESS exists, return 'created' or 'exists'
 // pubkey:   return the pubkey (hexstring) for ADDRESS's key at KEYPATH
-// keystore: return a JSON-encoded keystore for ADDRESS's key at KEYPATH
+// keystore: return a JSON-encoded keystore for ADDRESS's key at KEYPATH (protected by KEYPASS)
 // sign:     return signature (hexstring) for input data using ADDRESS's key at KEYPATH
 
 if (!addressRegExp.test(process.env.ADDRESS))
@@ -67,7 +68,8 @@ switch (process.env.COMMAND) {
   case 'keystore': {
     const pubkey = pubkeyFromPrivkey(sk)
     const path = process.env.KEYPATH
-    console.log(JSON.stringify(generateKeystore({sk, path, pubkey})))
+    const password = process.env.KEYPASS
+    console.log(JSON.stringify(generateKeystore({sk, path, pubkey, password})))
     break
   }
   case 'sign': {
