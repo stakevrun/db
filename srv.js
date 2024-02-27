@@ -341,7 +341,7 @@ const computeDepositData = ({amountGwei, pubkey, withdrawalCredentials, chainId,
     sha256(concatBytes(sha256(signatureBytes.slice(0, 64)), sha256(signature2))),
     32
   )
-  const depositDataRoot = toHex(sha256(depositDataRootPrehash))
+  const depositDataRoot = `0x${toHex(sha256(depositDataRootPrehash))}`
   return {depositDataRoot, signature}
 }
 
