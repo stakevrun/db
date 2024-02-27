@@ -176,7 +176,7 @@ const getNextIndex = addressPath =>
 const numberRegExp = /[0-9]+/
 const hexStringRegExp = /0x[0-9a-fA-F]*/
 const bytes32RegExp = /0x[0-9a-fA-F]{64}/
-const structTypeRegExp = /(?<name>\w+)\((?<args>(?:\w+ \w+(?:,\w+ \w+)*)?)\)/
+const structTypeRegExp = /(?<name>\w+)\((?<args>(?:\w+(?:\[\])? \w+(?:,\w+(?:\[\])? \w+)*)?)\)/
 
 const encodeData = (data, encodedType) => {
   if (encodedType == 'string') {
