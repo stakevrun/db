@@ -488,7 +488,7 @@ createServer((req, res) => {
               writeFileSync(logPath, logs.map(log => `${JSON.stringify(log)}\n`).join(''), {flag: 'a'})
               gitCheck(['add', logPath], workDir, '', `failed to add logs`)
             }
-            const lineRegExp = new RegExp(`[34],0,${chainId}/${address}/${pubkeyRe('')}`)
+            const lineRegExp = new RegExp(`[34]\\s+0\\s+${chainId}/${address}/${pubkeyRe('')}`)
             gitCheck(['diff', '--staged', '--numstat'], workDir,
               output => {
                 const lines = output.trimEnd().split('\n')
