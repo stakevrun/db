@@ -1,6 +1,5 @@
-process.setUncaughtExceptionCaptureCallback((e) => {
-  console.log(`error: ${e.message}`)
-})
+import { errorPrefix } from './lib.js'
+process.setUncaughtExceptionCaptureCallback((e) => console.log(`${errorPrefix}${e.message}`))
 
 import { randomSeed, privkeyFromPath, pubkeyFromPrivkey, generateKeystore, toHex } from './sig.js'
 import { bls12_381 } from '@noble/curves/bls12-381'

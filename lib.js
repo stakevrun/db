@@ -12,6 +12,28 @@ export const addressRegExp = new RegExp(addressRe)
 export const readJSONL = (path) =>
   readFileSync(path, 'utf8').trimEnd().split('\n').map(JSON.parse)
 
+export const errorPrefix = 'error: '
+export const prv = (cmd, {chainId, address, path}, input) => {
+  const env = {COMMAND: cmd, CHAINID: chainId, ADDRESS: address}
+  if (path) env.KEYPATH = path
+  const res = spawnSync('systemd-run', [
+    '--quiet', '--collect', '--same-dir',
+    '--wait', '--pipe',
+    '--unit=vrunprv',
+    '--expand-environment=no',
+    '--property=DynamicUser=yes',
+    '--property=StateDirectory=vrunprv', '--setenv=STATE_DIR=/var/lib/vrunprv',
+    '--setenv=COMMAND', '--setenv=CHAINID', '--setenv=ADDRESS', '--setenv=KEYPATH',
+    'node', 'prv'
+  ], {env, input})
+  if (res.status === 0)
+    return res.stdout.toString().trimEnd()
+  else if (res.stdout.toString().startsWith(errorPrefix))
+    throw new Error(`500:${res.stdout.slice(errorPrefix.length)}`)
+  else
+    throw new Error(`500:prv failed: status ${res.status}, stdout '${res.stdout}', stderr '${res.stderr}'`)
+}
+
 const stateDir = process.env.STATE_DIR
 const bareDir = `${stateDir}/bare`
 export const workDir = `${stateDir}/work`
