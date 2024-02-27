@@ -1,8 +1,10 @@
-import { workDir, gitCheck, readJSONL } from './lib.js'
+import { workDir, gitCheck, readJSONL, prv } from './lib.js'
 import { readFileSync, readdirSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 
 const beaconUrl = process.env.BN || 'http://localhost:5052'
+
+const authTokens = new Map()
 
 // {chainId: {pubkey: {url, enabled, feeRecipient, graffiti, status}, ...}, ...}
 async function computeVcState(vcsConfig) {
@@ -12,6 +14,7 @@ async function computeVcState(vcsConfig) {
     const validatorsByPubkey = {}
     vcState[chainId] = validatorsByPubkey
     for (const {url, authToken} of vcs) {
+      authTokens.set(url, authToken)
       const headers = {'Authorization': `Bearer ${authToken}`}
       const res = await fetch(`${url}/lighthouse/validators`, {headers})
       const json = await res.json()
@@ -140,10 +143,63 @@ createInterface({input: process.stdin}).on('line', async (line) => {
       if (f === 'f' && 0 <= parseInt(i) && i < discrepancies?.length) {
         const d = discrepancies[i]
         console.log(`Got request to fix discrepancy ${i}: ${JSON.stringify(d)}`)
+        const headers = {'Authorization': `Bearer ${authTokens.get(d.url)}`}
+        const getBody = (s) => new Promise(resolve => {
+          const chunks = []
+          s.setEncoding('utf8')
+          s.on('data', (d) => chunks.push(d))
+          s.on('end', () => resolve(chunks.join('')))
+        })
+        const logPrefix = `${d.chainId}:${d.pubkey}: `
+        const checkStatus = async (desired, res) => {
+          const correct = res.statusCode === desired
+          if (!correct)
+            console.error(`Request failed, ${res.statusCode} ${res.statusMessage}: ${await getBody(res)}`)
+          return correct
+        }
+        switch (d.issue) {
+          case 'exists':
+            if (d.vc)
+              console.warn(`${logPrefix}In VC but not srv, ignoring...`)
+            else {
+              console.log(`${logPrefix}Importing keystore into VC`)
+              // TODO: assign a VC to this validator
+              // TODO: generate keystore using prv
+              // TODO: import keystore into assigned VC
+            }
+            break
+          case 'enabled':
+            console.log(`${logPrefix}Setting VC enabled to ${d.srv}`)
+            await checkStatus(200,
+              await fetch(`${d.url}/lighthouse/validators/${d.pubkey}`,
+                {headers, method: 'PATCH', body: `{"enabled": ${d.srv}}`}))
+            break
+          case 'feeRecipient':
+            console.log(`${logPrefix}Changing VC feeRecipient from ${d.vc} to ${d.srv}`)
+            await checkStatus(202,
+              await fetch(`${d.url}/eth/v1/validator/${d.pubkey}/feerecipient`,
+                {headers, method: 'POST', body: `{"ethaddress": "${d.srv}"}`}))
+            break
+          case 'graffiti':
+            console.log(`${logPrefix}Changing VC graffiti from ${d.vc} to ${d.srv}`)
+            await checkStatus(202,
+              await fetch(`${d.url}/eth/v1/validator/${d.pubkey}/graffiti`,
+                {headers, method: 'POST', body: `{"graffiti": "${d.srv}"}`}))
+            break
+          case 'exit':
+            console.log(`${logPrefix}Requested exit but status is ${d.vc}. Creating exit message...`)
+            if (await checkStatus(200, await fetch(`${d.url}/eth/v1/validator/${d.pubkey}/voluntary_exit`,
+                                                   {headers, method: 'POST'}))) {
+              const exitMessage = await getBody(res)
+              console.log(`Produced exit message: ${exitMessage}`)
+              // TODO: broadcast to beacon node?
+            }
+            break
+          default:
+            console.error(`Unknown discrepancy '${d.issue}'`)
+        }
       }
       else
         console.warn(`Unknown command '${line}'`)
   }
 })
-
-// TODO: alert + act on any discrepancies
