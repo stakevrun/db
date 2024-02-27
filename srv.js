@@ -484,7 +484,7 @@ createServer((req, res) => {
                 newLogsForPubkey.push({type, timestamp: timestamp.toString(), [key]: value})
               }
             }
-            for (const [logPath, logs] of Object.entries(newLogsForPubkey)) {
+            for (const [logPath, logs] of Object.entries(newLogs)) {
               writeFileSync(logPath, logs.map(log => `${JSON.stringify(log)}\n`).join(''), {flag: 'a'})
               gitCheck(['add', logPath], workDir, '', `failed to add logs`)
             }
