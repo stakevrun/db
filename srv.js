@@ -472,14 +472,14 @@ createServer((req, res) => {
                 amountGwei: data.amountGwei, pubkey, withdrawalCredentials, chainId, address, path
               })
               depositDataByPubkey[pubkey] = depositData
-              const logs = existing && readJSONL(logPath)
-              if (logs && !(parseInt(logs.at(-1).timestamp) <= timestamp)) throw new Error(`400:Timestamp too early`)
-              if (logs?.some(({type}) => type == 'Exit')) throw new Error(`400:Already exited`)
+              const logs = existing ? readJSONL(logPath) : []
+              if (logs.length && !(parseInt(logs.at(-1).timestamp) <= timestamp)) throw new Error(`400:Timestamp too early`)
+              if (logs.some(({type}) => type == 'Exit')) throw new Error(`400:Already exited`)
               for (const [type, value] of [['SetFeeRecipient', data.feeRecipient],
                                            ['SetGraffiti', data.graffiti],
                                            ['SetEnabled', true]]) {
                 const key = type.slice(3).toLowerCase()
-                const lastLog = logs?.toReversed().find(({type: logType}) => logType == type)
+                const lastLog = logs.toReversed().find(({type: logType}) => logType == type)
                 if (lastLog?.[key] === value) throw new Error(`400:Setting unchanged`)
                 newLogsForPubkey.push({type, timestamp: timestamp.toString(), [key]: value})
               }
