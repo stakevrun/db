@@ -13,19 +13,18 @@ export const readJSONL = (path) =>
   readFileSync(path, 'utf8').trimEnd().split('\n').map(JSON.parse)
 
 export const errorPrefix = 'error: '
-export const prv = (cmd, {chainId, address, path}, input) => {
+export const prv = (cmd, {chainId, address, path, password}, input) => {
   const env = {COMMAND: cmd, CHAINID: chainId, ADDRESS: address}
-  if (path) env.KEYPATH = path
-  const res = spawnSync('systemd-run', [
-    '--quiet', '--collect', '--same-dir',
-    '--wait', '--pipe',
-    '--unit=vrunprv',
-    '--expand-environment=no',
-    '--property=DynamicUser=yes',
+  const args = [
+    '--quiet', '--collect', '--same-dir', '--wait', '--pipe',
+    '--unit=vrunprv', '--expand-environment=no', '--property=DynamicUser=yes',
     '--property=StateDirectory=vrunprv', '--setenv=STATE_DIR=/var/lib/vrunprv',
-    '--setenv=COMMAND', '--setenv=CHAINID', '--setenv=ADDRESS', '--setenv=KEYPATH',
-    'node', 'prv'
-  ], {env, input})
+    '--setenv=COMMAND', '--setenv=CHAINID', '--setenv=ADDRESS'
+  ]
+  if (path) { env.KEYPATH = path; args.push('--setenv=KEYPATH') }
+  if (password) { env.KEYPASS = password; args.push('--setenv=KEYPASS') }
+  args.push('node', 'prv')
+  const res = spawnSync('systemd-run', args, {env, input})
   if (res.status === 0)
     return res.stdout.toString().trimEnd()
   else if (res.stdout.toString().startsWith(errorPrefix))
