@@ -4,6 +4,15 @@
 
 All the GET requests return `application/json` content.
 
+- `GET /<chainId>/<address>/acceptance`
+Returns:
+```
+{timestamp: number, declaration: string, signature: string}
+```
+acceptance of the terms of service signed by `address`, where `signature` is an
+EIP-712 signature (represented as a 0x-prefixed hexstring) over the
+`AcceptTermsOfService` structure described further down.
+
 - `GET /<chainId>/<address>/nextindex`
 Returns: number - the next unused key index for `address`.
 
@@ -23,8 +32,8 @@ earliest matching logs first.
 
 ## PUT/POST requests
 
-- `PUT (CreateKey) /<chainId>/<address>`
-- `POST (the rest) /<chainId>/<address>/<index>`
+- `PUT /<chainId>/<address>`
+- `POST /<chainId>/<address>/<index>`
 
 The body content-type should be `application/json`.
 
@@ -36,9 +45,14 @@ where `signature` is an [EIP-712](https://eips.ethereum.org/EIPS/eip-712)
 signature over `type{...data}` encoded as a compact 0x-prefixed hexstring, with
 `EIP712Domain = {name: "vrün", version: "1", chainId: <chainId>}`.
 
-The possible data objects (instructions) are as follows:
+The possible data objects (instructions) are given below.`PUT` is used for
+`AcceptTermsOfService` and `CreateKey`. `POST` is used for the others.
 
 ```
+struct AcceptTermsOfService {
+  string declaration;
+}
+
 struct CreateKey {
   uint256 index;
 }

@@ -12,6 +12,7 @@ const port = 8880
 ensureDirs()
 
 // srv repository database layout:
+// ${chainId}/a/${address} : JSON lines of signed acceptances of the terms of service
 // ${chainId}/${address}/${pubkey} : JSON lines of log entries
 //
 // the log is an append-only record of user instructions
@@ -32,6 +33,7 @@ const routesRegExp = new RegExp(`^/` +
     `(?<i1>pubkey)/(?<index>[0-9]+)|` +
     `${pubkeyRe(2)}/(?<i2>length)|` +
     `${pubkeyRe(3)}/(?<i3>logs)|` +
+    `(?<i4>acceptance)`
   `)$`
 )
 
@@ -132,9 +134,12 @@ const normaliseData = (data, args) => {
   return normalised
 }
 
+const requiredDeclaration = 'I accept the terms of service specified at https://vrün.com/terms (with version identifier 20240229).'
+
 const typesForPUT = new Map()
 const typesForPOST = new Map()
 
+typesForPUT.set('AcceptTermsOfService', 'string declaration')
 typesForPUT.set('CreateKey', 'uint256 index')
 
 typesForPOST.set('GetDepositData',
@@ -183,7 +188,7 @@ const verifyEIP712 = ({body, domainSeparator, typeMap}) => {
   const pubkeyForKeccak = sigPubkey.toRawBytes(false).slice(1)
   if (pubkeyForKeccak.length != 64) throw new Error(`500:Unexpected pubkey length ${toHex(pubkeyForKeccak)}`)
   const address = `0x${toHex(keccak256(pubkeyForKeccak).slice(-20))}`
-  return {type, data: normaliseData(data, args.split(',')), address}
+  return {type, data: normaliseData(data, args.split(',')), address, signature}
 }
 
 const addLogLine = (logPath, log) => {
@@ -283,6 +288,12 @@ createServer((req, res) => {
       if (match.groups.i0 == 'nextindex') {
         finish(200, (+getNextIndex(addressPath)).toString())
       }
+      else if (match.groups.i4 == 'acceptance') {
+        const acceptancePath = `${workDir}/${chainId}/a/${address}`
+        if (!existsSync(acceptancePath)) throw new Error(`404:Acceptance missing`)
+        const {timestamp, declaration, signature} = readJSONL(acceptancePath).at(-1)
+        finish(200, JSON.stringify({timestamp, declaration, signature}))
+      }
       else if (match.groups.i1 == 'pubkey') {
         if (!existsSync(addressPath)) throw new Error('404:Unknown address')
         const index = parseInt(match.groups.index)
@@ -332,9 +343,14 @@ createServer((req, res) => {
         try {
           const typeMap = req.method == 'PUT' ? typesForPUT : typesForPOST
           const domainSeparator = domainSeparators.get(chainId)
-          const {type, data, address: sigAddress} = verifyEIP712({domainSeparator, body, typeMap})
+          const {type, data, address: sigAddress, signature} = verifyEIP712({domainSeparator, body, typeMap})
           if (sigAddress !== address) throw new Error(`400:Address mismatch: ${sigAddress}`)
           const addressPath = `${workDir}/${chainId}/${address}`
+          const acceptancePath = `${workDir}/${chainId}/a/${address}`
+          const acceptanceExists = existsSync(acceptancePath)
+          const {declaration: currentDeclaration} = acceptanceExists && readJSONL(acceptancePath).at(-1)
+          if (currentDeclaration !== requiredDeclaration && type != 'AcceptTermsOfService')
+            throw new Error('400:Acceptance of terms of service missing')
           if (type == 'AddValidators') {
             const firstIndex = parseInt(data.firstIndex)
             const nextIndex = getNextIndex(addressPath)
@@ -394,6 +410,18 @@ createServer((req, res) => {
             )
             gitPush(type, workDir)
             finish(201, JSON.stringify(depositDataByPubkey))
+          }
+          else if (type == 'AcceptTermsOfService') {
+            if (data.declaration !== requiredDeclaration)
+              throw new Error('400:Invalid declaration')
+            const existing = currentDeclaration === data.declaration
+            if (!acceptanceExists) mkdirSync(`${workDir}/a`, {recursive: true})
+            if (!existing) {
+              const timestamp = Math.floor(Date.now() / 1000).toString()
+              addLogLine(acceptancePath, {type, timestamp, ...data, signature})
+            }
+            const statusCode = existing ? 200 : 201
+            finish(statusCode, '')
           }
           else if (type == 'CreateKey') {
             const index = parseInt(data.index)
