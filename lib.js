@@ -12,6 +12,16 @@ export const addressRegExp = new RegExp(addressRe)
 export const readJSONL = (path) =>
   readFileSync(path, 'utf8').trimEnd().split('\n').map(JSON.parse)
 
+// ERC-2334
+const purpose = 12381
+const coinType = 3600
+export const pathsFromIndex = index => {
+  const prefix = `m/${purpose}/${coinType}/${index}`
+  const withdrawal = `${prefix}/0`
+  const signing = `${withdrawal}/0`
+  return {withdrawal, signing}
+}
+
 export const errorPrefix = 'error: '
 export const prv = (cmd, {chainId, address, path, password}, input) => {
   const env = {COMMAND: cmd, CHAINID: chainId, ADDRESS: address}

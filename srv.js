@@ -1,4 +1,4 @@
-import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRe, addressRegExp, readJSONL, prv } from './lib.js'
+import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRe, addressRegExp, readJSONL, pathsFromIndex, prv } from './lib.js'
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, existsSync, readdirSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
@@ -8,16 +8,6 @@ import { secp256k1 } from "ethereum-cryptography/secp256k1.js";
 import { hexToBytes, toHex, concatBytes } from "ethereum-cryptography/utils.js";
 
 const port = 8880
-
-// ERC-2334
-const purpose = 12381
-const coinType = 3600
-const pathsFromIndex = index => {
-  const prefix = `m/${purpose}/${coinType}/${index}`
-  const withdrawal = `${prefix}/0`
-  const signing = `${withdrawal}/0`
-  return {withdrawal, signing}
-}
 
 ensureDirs()
 
