@@ -297,7 +297,10 @@ createServer((req, res) => {
         const pubkey = [2, 3].map(i => match.groups[`pubkey${i}`]).find(x => x)
         const logPath = `${addressPath}/${pubkey}`
         if (!existsSync(logPath)) throw new Error('404:Unknown pubkey')
-        const logs = readJSONL(logPath)
+        const unfiltered = readJSONL(logPath)
+        const type = url.searchParams.get('type')
+        const test = type && new RegExp(type, 'i')
+        const logs = type ? unfiltered.flatMap(x => test.test(x.type) ? [x] : []) : unfiltered
         if (match.groups.i2 == 'length') {
           finish(200, logs.length.toString())
         }

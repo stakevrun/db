@@ -11,12 +11,15 @@ Returns: number - the next unused key index for `address`.
 Returns: string - 0x-prefixed hexstring of the public key at `index` for
 `address`.
 
-- `GET /<chainId>/<address>/<pubkey>/length`
-Returns: number - the number of log entries for `address` and `pubkey`.
+- `GET /<chainId>/<address>/<pubkey>/length?type`
+Returns: number - the number of log entries for `address` and `pubkey` whose
+type matches the regular expression given by `type` (or all entries if `type`
+is omitted).
 
-- `GET /<chainId>/<address>/<pubkey>/logs?start&end`
-Returns: `[<log>...]` - log entries, with `start` and `end` interpreted as in
-`Array.prototype.slice`, with the earliest logs first.
+- `GET /<chainId>/<address>/<pubkey>/logs?type&start&end`
+Returns: `[<log>...]` - log entries whose type matches `type` (all if omitted),
+with `start` and `end` interpreted as in `Array.prototype.slice`, with the
+earliest matching logs first.
 
 ## PUT/POST requests
 
