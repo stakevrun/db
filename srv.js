@@ -296,6 +296,7 @@ createServer((req, res) => {
         if (!existsSync(addressPath)) throw new Error('404:Unknown address')
         const pubkey = [2, 3].map(i => match.groups[`pubkey${i}`]).find(x => x)
         const logPath = `${addressPath}/${pubkey}`
+        if (!existsSync(logPath)) throw new Error('404:Unknown pubkey')
         const logs = readJSONL(logPath)
         if (match.groups.i2 == 'length') {
           finish(200, logs.length.toString())

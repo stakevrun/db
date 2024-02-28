@@ -96,10 +96,8 @@ where `depositDataRoot` is a 0x-prefixed hexstring of 32 bytes, and
 `signature` is a 0x-prefixed hexstring encoding a signature over
 `depositDataRoot`.
 
-Unsucessful responses will have status 400 or 500 depending on the problem:
-
 Any issues with processing the body (wrong content-type, bad signature,
-malformed instruction, invalid instruction) will get a 400 response with a
+malformed instruction, invalid instruction) will get a 40x response with a
 plain text error message body.
 
 Any errors raised in processing the request will be relayed back in a plain
