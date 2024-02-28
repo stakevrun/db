@@ -188,8 +188,9 @@ createInterface({input: process.stdin}).on('line', async (line) => {
             break
           case 'exit':
             console.log(`${logPrefix}Requested exit but status is ${d.vc}. Creating exit message...`)
-            if (await checkStatus(200, await fetch(`${d.url}/eth/v1/validator/${d.pubkey}/voluntary_exit`,
-                                                   {headers, method: 'POST'}))) {
+            const res = await fetch(`${d.url}/eth/v1/validator/${d.pubkey}/voluntary_exit`,
+              {headers, method: 'POST'})
+            if (await checkStatus(200, res)) {
               const exitMessage = await getBody(res)
               console.log(`Produced exit message: ${exitMessage}`)
               // TODO: broadcast to beacon node?
