@@ -37,46 +37,46 @@ const chainId = process.env.CHAINID
 const chainPath = `${workDir}/${chainId}`
 const seedPath = `${chainPath}/${address}`
 
-switch (process.env.COMMAND) {
-  case 'generate': {
-    if (existsSync(seedPath))
-      console.log('exists')
-    else {
-      mkdirSync(chainPath)
-      writeFileSync(seedPath, randomSeed(), {flag: 'wx'})
-      gitCheck(['add', seedPath], workDir, '', 'failed to add seed')
-      gitCheck(['diff', '--staged', '--name-status'], workDir,
-        output => (
-          !output.trimEnd().includes('\n') &&
-          output.trimEnd().split(/\s+/).join() == `A,${chainId}/${address}`
-        ),
-        'unexpected diff adding seed'
-      )
-      gitPush(address, workDir)
-      console.log('created')
+if (process.env.COMMAND == 'generate') {
+  if (existsSync(seedPath))
+    console.log('exists')
+  else {
+    mkdirSync(chainPath)
+    writeFileSync(seedPath, randomSeed(), {flag: 'wx'})
+    gitCheck(['add', seedPath], workDir, '', 'failed to add seed')
+    gitCheck(['diff', '--staged', '--name-status'], workDir,
+      output => (
+        !output.trimEnd().includes('\n') &&
+        output.trimEnd().split(/\s+/).join() == `A,${chainId}/${address}`
+      ),
+      'unexpected diff adding seed'
+    )
+    gitPush(address, workDir)
+    console.log('created')
+  }
+}
+else {
+  const seed = readFileSync(seedPath)
+  const sk = privkeyFromPath(seed, process.env.KEYPATH)
+  switch (process.env.COMMAND) {
+    case 'pubkey': {
+      const pk = pubkeyFromPrivkey(sk)
+      console.log(`0x${toHex(pk)}`)
+      break
     }
-    break
+    case 'keystore': {
+      const pubkey = pubkeyFromPrivkey(sk)
+      const path = process.env.KEYPATH
+      const password = process.env.KEYPASS
+      console.log(JSON.stringify(generateKeystore({sk, path, pubkey, password})))
+      break
+    }
+    case 'sign': {
+      const sig = bls12_381.sign(readFileSync(process.stdin.fd), sk)
+      console.log(`0x${toHex(sig)}`)
+      break
+    }
+    default:
+      throw new Error('invalid command')
   }
-  case process.env.COMMAND:
-    const seed = readFileSync(seedPath)
-    const sk = privkeyFromPath(seed, process.env.KEYPATH)
-  case 'pubkey': {
-    const pk = pubkeyFromPrivkey(sk)
-    console.log(`0x${toHex(pk)}`)
-    break
-  }
-  case 'keystore': {
-    const pubkey = pubkeyFromPrivkey(sk)
-    const path = process.env.KEYPATH
-    const password = process.env.KEYPASS
-    console.log(JSON.stringify(generateKeystore({sk, path, pubkey, password})))
-    break
-  }
-  case 'sign': {
-    const sig = bls12_381.sign(readFileSync(process.stdin.fd), sk)
-    console.log(`0x${toHex(sig)}`)
-    break
-  }
-  default:
-    throw new Error('invalid command')
 }
