@@ -1,6 +1,7 @@
-import { workDir, gitCheck, readJSONL, prv } from './lib.js'
+import { workDir, gitCheck, readJSONL, pathsFromIndex, prv } from './lib.js'
 import { readFileSync, readdirSync } from 'node:fs'
 import { createInterface } from 'node:readline'
+import { randomInt } from 'node:crypto'
 
 const beaconUrl = process.env.BN || 'http://localhost:5052'
 
@@ -72,11 +73,12 @@ function computeDiscrepancies(vcState) {
       }
       const logPath = `${chainDir}/${pubkeyWithAddress}`
       const reverseLogs = readJSONL(logPath).toReversed()
+      const index = reverseLogs.find(({type}) => type == 'CreateKey').index
       const srvEnabled = reverseLogs.find(({type}) => type == 'SetEnabled')?.enabled
       const srvFeeRecipient = reverseLogs.find(({type}) => type == 'SetFeeRecipient')?.feeRecipient
       const srvGraffiti = reverseLogs.find(({type}) => type == 'SetGraffiti')?.graffiti
       const srvExited = reverseLogs.find(({type}) => type == 'Exit')
-      const base = {chainId, pubkey, url: validator.url}
+      const base = {chainId, address, index, pubkey, url: validator.url}
       if (validator.enabled !== srvEnabled)
         discrepancies.push({...base, issue: 'enabled', srv: srvEnabled, vc: validator.enabled})
       if (validator.feeRecipient !== srvFeeRecipient)
@@ -163,9 +165,28 @@ createInterface({input: process.stdin}).on('line', async (line) => {
               console.warn(`${logPrefix}In VC but not srv, ignoring...`)
             else {
               console.log(`${logPrefix}Importing keystore into VC`)
-              // TODO: assign a VC to this validator
-              // TODO: generate keystore using prv
-              // TODO: import keystore into assigned VC
+              await ensureVcState()
+              const validatorsByPubkey = vcState[d.chainId] || {}
+              const pubkeysPerUrl = {}
+              for (const [pubkey, {url}] of Object.entries(validatorsByPubkey))
+                pubkeysPerUrl[url] = pubkeysPerUrl[url] || 0 + 1
+              const leastFullVC = Object.entries(pubkeysPerUrl).sort((a, b) => a[1] - b[1])?.[0]
+              if (!leastFullVC) {
+                console.error(`No VC available, cannot import keystore`)
+                break
+              }
+              const authToken = authTokens.get(leastFullVC)
+              const headers = {'Authorization': `Bearer ${authToken}`}
+              const passwordChars = []
+              for (const i of Array(randomInt(16, 49)).keys())
+                passwordChars.push(String.fromCodePoint(randomInt(33, 127)))
+              const password = passwordChars.join('')
+              const {signing: path} = pathsFromIndex(d.index)
+              const keystore = prv('keystore', {chainId: d.chainId, address: d.address, path, password})
+              const body = JSON.stringify({keystores: [keystore], passwords: [password]})
+              await checkStatus(200,
+                await fetch(`${leastFullVC}/eth/v1/keystores`,
+                  {headers, method: 'POST', body}))
             }
             break
           case 'enabled':
