@@ -47,9 +47,12 @@ const hexStringRegExp = /0x[0-9a-fA-F]*/
 const bytes32RegExp = /0x[0-9a-fA-F]{64}/
 const structTypeRegExp = /(?<name>\w+)\((?<args>(?:\w+(?:\[\])? \w+(?:,\w+(?:\[\])? \w+)*)?)\)/
 
+const MAX_STRING_LENGTH = 128
+
 const encodeData = (data, encodedType) => {
   if (encodedType == 'string') {
     if (typeof data != 'string') throw new Error('not a string')
+    if (data.length > MAX_STRING_LENGTH) throw new Error('string too long')
     return keccak256(Buffer.from(data))
   }
   else if (encodedType == 'bytes') {
@@ -127,6 +130,7 @@ const normaliseData = (data, args) => {
         normalised[key] = data[key].map(a => a.toLowerCase())
       case 'bool':
       case 'string':
+      case 'string[]':
       default:
         normalised[key] = data[key]
     }
@@ -151,6 +155,9 @@ typesForPOST.set('SetFeeRecipient',
 typesForPOST.set('SetGraffiti',
   'uint256 timestamp,bytes pubkey,string graffiti'
 )
+typesForPOST.set('SetName',
+  'uint256 timestamp,bytes pubkey,string name'
+)
 typesForPOST.set('SetEnabled',
   'uint256 timestamp,bytes pubkey,bool enabled'
 )
@@ -160,7 +167,7 @@ typesForPOST.set('Exit',
 typesForPOST.set('AddValidators',
   'uint256 timestamp,uint256 firstIndex,' +
   'uint256 amountGwei,address feeRecipient,string graffiti,' +
-  'address[] withdrawalAddresses'
+  'address[] withdrawalAddresses,string[] names'
 )
 
 const verifyEIP712 = ({body, domainSeparator, typeMap}) => {
@@ -364,8 +371,10 @@ createServer((req, res) => {
             const depositDataByPubkey = {}
             const timestamp = parseInt(data.timestamp)
             if (!(timestamp <= (Date.now() / 1000))) throw new Error(`400:Timestamp in the future`)
+            if (data.withdrawalAddresses.length !== data.names.length)
+              throw new Error(`400:Mismatching numbers of names and withdrawal addresses`)
             let index = firstIndex
-            for (const withdrawalAddress of data.withdrawalAddresses) {
+            for (const [i, withdrawalAddress] of data.withdrawalAddresses.entries()) {
               const existing = index < nextIndex
               const {signing: path} = pathsFromIndex(index)
               const pubkey = prv('pubkey', {chainId, address, path})
@@ -386,6 +395,7 @@ createServer((req, res) => {
               if (logs.some(({type}) => type == 'Exit')) throw new Error(`400:Already exited`)
               for (const [type, value] of [['SetFeeRecipient', data.feeRecipient],
                                            ['SetGraffiti', data.graffiti],
+                                           ['SetName', data.names[i]],
                                            ['SetEnabled', true]]) {
                 const key = type.slice(3).toLowerCase()
                 const lastLog = logs.toReversed().find(({type: logType}) => logType == type)
@@ -397,7 +407,7 @@ createServer((req, res) => {
               writeFileSync(logPath, logs.map(log => `${JSON.stringify(log)}\n`).join(''), {flag: 'a'})
               gitCheck(['add', logPath], workDir, '', `failed to add logs`)
             }
-            const lineRegExp = new RegExp(`[34]\\s+0\\s+${chainId}/${address}/${pubkeyRe('')}`)
+            const lineRegExp = new RegExp(`[45]\\s+0\\s+${chainId}/${address}/${pubkeyRe('')}`)
             gitCheck(['diff', '--staged', '--numstat'], workDir,
               output => {
                 const lines = output.trimEnd().split('\n')
@@ -460,7 +470,7 @@ createServer((req, res) => {
               if (!(parseInt(lastLog.timestamp) <= parseInt(data.timestamp))) throw new Error(`400:Timestamp too early`)
               if (!(parseint(data.timestamp) <= (Date.now() / 1000))) throw new Error(`400:Timestamp in the future`)
               if (logs.some(({type}) => type == 'Exit')) throw new Error(`400:Already exited`)
-              if (['SetEnabled', 'SetFeeRecipient', 'SetGraffiti'].includes(type)) {
+              if (['SetEnabled', 'SetFeeRecipient', 'SetGraffiti', 'SetName'].includes(type)) {
                 const key = type.slice(3).toLowerCase()
                 const lastLog = logs.toReversed().find(({type: logType}) => logType == type)
                 if (lastLog?.[key] === data[key])

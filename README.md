@@ -81,6 +81,12 @@ struct SetEnabled {
   bool enabled;
 }
 
+struct SetName {
+  uint256 timestamp;
+  bytes pubkey;
+  string name;
+}
+
 struct Exit {
   uint256 timestamp;
   bytes pubkey;
@@ -93,6 +99,7 @@ struct AddValidators {
   address feeRecipient;
   string graffiti;
   address[] withdrawalAddresses;
+  string[] names;
 }
 ```
 
