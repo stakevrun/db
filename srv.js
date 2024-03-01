@@ -33,7 +33,7 @@ const routesRegExp = new RegExp(`^/` +
     `(?<i1>pubkey)/(?<index>[0-9]+)|` +
     `${pubkeyRe(2)}/(?<i2>length)|` +
     `${pubkeyRe(3)}/(?<i3>logs)|` +
-    `(?<i4>acceptance)`
+    `(?<i4>acceptance)` +
   `)$`
 )
 
