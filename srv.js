@@ -353,7 +353,8 @@ createServer((req, res) => {
           const {type, data, address: sigAddress, signature} = verifyEIP712({domainSeparator, body, typeMap})
           if (sigAddress !== address) throw new Error(`400:Address mismatch: ${sigAddress}`)
           const addressPath = `${workDir}/${chainId}/${address}`
-          const acceptancePath = `${workDir}/${chainId}/a/${address}`
+          const acceptanceDir = `${workDir}/${chainId}/a`
+          const acceptancePath = `${acceptanceDir}/${address}`
           const acceptanceExists = existsSync(acceptancePath)
           const {declaration: currentDeclaration} = acceptanceExists && readJSONL(acceptancePath).at(-1)
           if (currentDeclaration !== requiredDeclaration && type != 'AcceptTermsOfService')
@@ -425,7 +426,7 @@ createServer((req, res) => {
             if (data.declaration !== requiredDeclaration)
               throw new Error('400:Invalid declaration')
             const existing = currentDeclaration === data.declaration
-            if (!acceptanceExists) mkdirSync(`${workDir}/a`, {recursive: true})
+            if (!acceptanceExists) mkdirSync(acceptanceDir, {recursive: true})
             if (!existing) {
               const timestamp = Math.floor(Date.now() / 1000).toString()
               addLogLine(acceptancePath, {type, timestamp, ...data, signature})
