@@ -214,35 +214,50 @@ const addLogLine = (logPath, log) => {
   gitPush(log.type, workDir)
 }
 
+const merkleRoot = (leaves) => {
+  const node = new Uint8Array(64)
+  while (leaves.length > 1) {
+    node.set(leaves.shift())
+    node.set(leaves.shift(), 32)
+    leaves.push(sha256(node))
+  }
+  return leaves.shift()
+}
+
 const computeDepositData = ({amountGwei, pubkey, withdrawalCredentials, chainId, address, path}) => {
-  const amountBytes = new DataView(new ArrayBuffer(8))
-  amountBytes.setBigUint64(0, BigInt(amountGwei), true)
   const pubkeyBytes = hexToBytes(pubkey)
   const pubkeyBytesPadded = new Uint8Array(64)
   pubkeyBytesPadded.set(pubkeyBytes)
-  const wcAmountPadded = new Uint8Array(64)
-  wcAmountPadded.set(typeof withdrawalCredentials == 'string' ?
-    hexToBytes(withdrawalCredentials) : withdrawalCredentials)
-  wcAmountPadded.set(new Uint8Array(amountBytes.buffer), 32)
-  const depositMessageRootPrehash = new Uint8Array(64)
-  depositMessageRootPrehash.set(sha256(pubkeyBytesPadded))
-  depositMessageRootPrehash.set(sha256(wcAmountPadded), 32)
-  const depositMessageRoot = sha256(depositMessageRootPrehash)
-  const depositDomainType = Uint8Array.from([3, 0, 0, 0])
-  const depositDataRootPrehash = new Uint8Array(64)
-  const forkDataRoot = sha256(depositDataRootPrehash)
-  const domain = concatBytes(depositDomainType, forkDataRoot.slice(0, 28))
-  const signingRoot = sha256(depositMessageRoot, domain)
+  const wcBytes = typeof withdrawalCredentials == 'string' ?
+    hexToBytes(withdrawalCredentials) : withdrawalCredentials
+  const amountBytes = new DataView(new ArrayBuffer(8))
+  amountBytes.setBigUint64(0, BigInt(amountGwei), true)
+  const amountPadded = new Uint8Array(32)
+  amountPadded.set(amountBytes)
+  const pubkeyRoot = merkleRoot(
+    [pubkeyBytesPadded.slice(0, 32), pubkeyBytesPadded.slice(32)]
+  )
+  const zero32 = new Uint8Array(32)
+  const depositMessageRoot = merkleRoot(
+    [pubkeyRoot, wcBytes, amountPadded, zero32]
+  )
+
+  const domain = new Uint8Array(32)
+  domain[0] = 3
+  domain.set(merkleRoot([zero32, zero32]).slice(0, 28), 4)
+  const signingRoot = merkleRoot([depositMessageRoot, domain])
   const signature = prv('sign', {chainId, address, path}, signingRoot)
   const signatureBytes = hexToBytes(signature)
-  const signature2 = new Uint8Array(64)
-  signature2.set(signatureBytes.slice(64))
-  depositDataRootPrehash.set(depositMessageRoot)
-  depositDataRootPrehash.set(
-    sha256(concatBytes(sha256(signatureBytes.slice(0, 64)), sha256(signature2))),
-    32
+
+  const signatureRoot = merkleRoot([
+    signatureBytes.slice(0, 32), signatureBytes.slice(32, 64),
+    signatureBytes.slice(64), zero32
+  ])
+
+  const depositDataRootBytes = merkleRoot(
+    [pubkeyRoot, wcBytes, amountPadded, signatureRoot]
   )
-  const depositDataRoot = `0x${toHex(sha256(depositDataRootPrehash))}`
+  const depositDataRoot = `0x${toHex(depositDataRootBytes)}`
   return {depositDataRoot, signature}
 }
 
