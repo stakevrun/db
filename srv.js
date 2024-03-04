@@ -233,7 +233,7 @@ const computeDepositData = ({amountGwei, pubkey, withdrawalCredentials, chainId,
   const amountBytes = new DataView(new ArrayBuffer(8))
   amountBytes.setBigUint64(0, BigInt(amountGwei), true)
   const amountPadded = new Uint8Array(32)
-  amountPadded.set(amountBytes)
+  amountPadded.set(new Uint8Array(amountBytes.buffer))
   const pubkeyRoot = merkleRoot(
     [pubkeyBytesPadded.slice(0, 32), pubkeyBytesPadded.slice(32)]
   )
