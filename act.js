@@ -172,12 +172,16 @@ createInterface({input: process.stdin}).on('line', async (line) => {
               vcs.forEach(({url}) => pubkeysPerUrl[url] = 0)
               for (const [pubkey, {url}] of Object.entries(validatorsByPubkey))
                 pubkeysPerUrl[url]++
-              const leastFullVC = Object.entries(pubkeysPerUrl).sort((a, b) => a[1] - b[1])?.[0]
+              const [[leastFullVC, ]] = Object.entries(pubkeysPerUrl).toSorted(([, a], [, b]) => a - b)
               if (!leastFullVC) {
                 console.error(`No VC available, cannot import keystore`)
                 break
               }
               const authToken = authTokens.get(leastFullVC)
+              if (!authToken) {
+                console.error(`Auth token missing for ${leastFullVC}, cannot import keystore`)
+                break
+              }
               const headers = {'Authorization': `Bearer ${authToken}`}
               const passwordChars = []
               for (const i of Array(randomInt(16, 49)).keys())
