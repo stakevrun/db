@@ -66,14 +66,14 @@ function computeDiscrepancies(vcState) {
       const [address, pubkey] = pubkeyWithAddress.split('/')
       if (address == 'a' || !pubkey) continue
       srvPubkeys.push(pubkey)
-      const validator = validatorsByPubkey[pubkey]
-      if (!validator) {
-        discrepancies.push({chainId, pubkey, issue: 'exists', srv: true, vc: false})
-        continue
-      }
       const logPath = `${chainDir}/${pubkeyWithAddress}`
       const reverseLogs = readJSONL(logPath).toReversed()
       const index = reverseLogs.find(({type}) => type == 'CreateKey').index
+      const validator = validatorsByPubkey[pubkey]
+      if (!validator) {
+        discrepancies.push({chainId, address, index, pubkey, issue: 'exists', srv: true, vc: false})
+        continue
+      }
       const srvEnabled = reverseLogs.find(({type}) => type == 'SetEnabled')?.enabled
       const srvFeeRecipient = reverseLogs.find(({type}) => type == 'SetFeeRecipient')?.feeRecipient
       const srvGraffiti = reverseLogs.find(({type}) => type == 'SetGraffiti')?.graffiti
