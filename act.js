@@ -7,6 +7,13 @@ const beaconUrl = process.env.BN || 'http://localhost:5052'
 
 const authTokens = new Map()
 
+const checkStatus = async (desired, res) => {
+  const correct = res.status === desired
+  if (!correct)
+    console.error(`Request failed, ${res.status} ${res.statusText}: ${JSON.stringify(await res.json())}`)
+  return correct
+}
+
 // {chainId: {pubkey: {url, enabled, feeRecipient, graffiti, status}, ...}, ...}
 async function computeVcState(vcsConfig) {
   const vcState = {}
@@ -26,16 +33,19 @@ async function computeVcState(vcsConfig) {
         validatorsByPubkey[voting_pubkey] = validator
         {
           const res = await fetch(`${url}/eth/v1/validator/${voting_pubkey}/feerecipient`, {headers})
+          if (!await checkStatus(200, res)) continue
           const json = await res.json()
           validator.feeRecipient = json.data.ethaddress
         }
         {
           const res = await fetch(`${url}/eth/v1/validator/${voting_pubkey}/graffiti`, {headers})
+          if (!await checkStatus(200, res)) continue
           const json = await res.json()
           validator.graffiti = json.data.graffiti
         }
         {
           const res = await fetch(`${beaconUrl}/eth/v1/beacon/states/finalized/validators/${voting_pubkey}`)
+          if (!await checkStatus(200, res)) continue
           const json = await res.json()
           validator.status = json.data.status
         }
@@ -150,12 +160,6 @@ createInterface({input: process.stdin}).on('line', async (line) => {
           'Content-Type': 'application/json'
         }
         const logPrefix = `${d.chainId}:${d.pubkey}: `
-        const checkStatus = async (desired, res) => {
-          const correct = res.status === desired
-          if (!correct)
-            console.error(`Request failed, ${res.status} ${res.statusText}: ${JSON.stringify(await res.json())}`)
-          return correct
-        }
         switch (d.issue) {
           case 'exists':
             if (d.vc)
