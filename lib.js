@@ -35,12 +35,14 @@ export const prv = (cmd, {chainId, address, path, password}, input) => {
   if (password) { env.KEYPASS = password; args.push('--setenv=KEYPASS') }
   args.push('node', 'prv')
   const res = spawnSync('systemd-run', args, {env, input})
-  if (res.status === 0)
-    return res.stdout.toString().trimEnd()
-  else if (res.stdout.toString().startsWith(errorPrefix))
-    throw new Error(`500:${res.stdout.slice(errorPrefix.length)}`)
+  const stdout = res.stdout.toString()
+  const hasError = stdout.startsWith(errorPrefix)
+  if (res.status === 0 && !hasError)
+    return stdout.trimEnd()
+  else if (hasError)
+    throw new Error(`500:${stdout.slice(errorPrefix.length)}`)
   else
-    throw new Error(`500:prv failed: status ${res.status}, stdout '${res.stdout}', stderr '${res.stderr}'`)
+    throw new Error(`500:prv failed: status ${res.status}, stdout '${stdout}', stderr '${res.stderr}'`)
 }
 
 const stateDir = process.env.STATE_DIR
