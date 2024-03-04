@@ -146,7 +146,7 @@ createInterface({input: process.stdin}).on('line', async (line) => {
         const d = discrepancies[i]
         console.log(`Got request to fix discrepancy ${i}: ${JSON.stringify(d)}`)
         const headers = {
-          'Authorization': `Bearer ${authTokens.get(d.url)}`
+          'Authorization': `Bearer ${authTokens.get(d.url)}`,
           'Content-Type': 'application/json'
         }
         const logPrefix = `${d.chainId}:${d.pubkey}: `
