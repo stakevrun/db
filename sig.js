@@ -222,7 +222,7 @@ export const generateKeystore = ({sk, path, pubkey, password}) => {
   const dklen = 32
   const r = 8
   const p = 1
-  const n = 16384
+  const n = 262144
   const derivedKey = scryptSync(password, saltBytes, dklen, {r, p, N: n})
   const algorithm = 'aes-128-ctr'
   const ivBytes = randomBytes(16)
