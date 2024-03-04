@@ -12,6 +12,8 @@ const checkStatus = async (desired, res) => {
   return correct
 }
 
+const hexDigitsRegExp = /^0x(?<content>[0-9a-f]*?)0*$/
+
 // {chainId: {pubkey: {url, enabled, feeRecipient, graffiti, status}, ...}, ...}
 async function computeVcState(vcsConfig) {
   const vcState = {}
@@ -45,7 +47,8 @@ async function computeVcState(vcsConfig) {
           const res = await fetch(`${url}/eth/v1/validator/${voting_pubkey}/graffiti`, {headers})
           if (await checkStatus(200, res)) {
             const json = await res.json()
-            validator.graffiti = json.data.graffiti
+            const graffitiHex = hexDigitsRegExp.exec(json.data.graffiti)?.groups.content || ''
+            validator.graffiti = Buffer.from(graffitiHex, 'hex').toString()
           }
         }
         {
