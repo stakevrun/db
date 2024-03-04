@@ -33,21 +33,24 @@ async function computeVcState(vcsConfig) {
         validatorsByPubkey[voting_pubkey] = validator
         {
           const res = await fetch(`${url}/eth/v1/validator/${voting_pubkey}/feerecipient`, {headers})
-          if (!await checkStatus(200, res)) continue
-          const json = await res.json()
-          validator.feeRecipient = json.data.ethaddress
+          if (await checkStatus(200, res)) {
+            const json = await res.json()
+            validator.feeRecipient = json.data.ethaddress
+          }
         }
         {
           const res = await fetch(`${url}/eth/v1/validator/${voting_pubkey}/graffiti`, {headers})
-          if (!await checkStatus(200, res)) continue
-          const json = await res.json()
-          validator.graffiti = json.data.graffiti
+          if (await checkStatus(200, res)) {
+            const json = await res.json()
+            validator.graffiti = json.data.graffiti
+          }
         }
         {
           const res = await fetch(`${beaconUrl}/eth/v1/beacon/states/finalized/validators/${voting_pubkey}`)
-          if (!await checkStatus(200, res)) continue
-          const json = await res.json()
-          validator.status = json.data.status
+          if (await checkStatus(200, res)) {
+            const json = await res.json()
+            validator.status = json.data.status
+          }
         }
       }
     }
