@@ -146,17 +146,11 @@ createInterface({input: process.stdin}).on('line', async (line) => {
         const d = discrepancies[i]
         console.log(`Got request to fix discrepancy ${i}: ${JSON.stringify(d)}`)
         const headers = {'Authorization': `Bearer ${authTokens.get(d.url)}`}
-        const getBody = (s) => new Promise(resolve => {
-          const chunks = []
-          s.setEncoding('utf8')
-          s.on('data', (d) => chunks.push(d))
-          s.on('end', () => resolve(chunks.join('')))
-        })
         const logPrefix = `${d.chainId}:${d.pubkey}: `
         const checkStatus = async (desired, res) => {
-          const correct = res.statusCode === desired
+          const correct = res.status === desired
           if (!correct)
-            console.error(`Request failed, ${res.statusCode} ${res.statusMessage}: ${await getBody(res)}`)
+            console.error(`Request failed, ${res.status} ${res.statusText}: ${JSON.stringify(await res.json())}`)
           return correct
         }
         switch (d.issue) {
@@ -218,8 +212,8 @@ createInterface({input: process.stdin}).on('line', async (line) => {
             const res = await fetch(`${d.url}/eth/v1/validator/${d.pubkey}/voluntary_exit`,
               {headers, method: 'POST'})
             if (await checkStatus(200, res)) {
-              const exitMessage = await getBody(res)
-              console.log(`Produced exit message: ${exitMessage}`)
+              const exitMessage = await res.json()
+              console.log(`Produced exit message: ${JSON.stringify(exitMessage)}`)
               // TODO: broadcast to beacon node?
             }
             break
