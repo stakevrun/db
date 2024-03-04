@@ -145,7 +145,10 @@ createInterface({input: process.stdin}).on('line', async (line) => {
       if (f === 'f' && 0 <= parseInt(i) && i < discrepancies?.length) {
         const d = discrepancies[i]
         console.log(`Got request to fix discrepancy ${i}: ${JSON.stringify(d)}`)
-        const headers = {'Authorization': `Bearer ${authTokens.get(d.url)}`}
+        const headers = {
+          'Authorization': `Bearer ${authTokens.get(d.url)}`
+          'Content-Type': 'application/json'
+        }
         const logPrefix = `${d.chainId}:${d.pubkey}: `
         const checkStatus = async (desired, res) => {
           const correct = res.status === desired
@@ -176,7 +179,7 @@ createInterface({input: process.stdin}).on('line', async (line) => {
                 console.error(`Auth token missing for ${leastFullVC}, cannot import keystore`)
                 break
               }
-              const headers = {'Authorization': `Bearer ${authToken}`}
+              headers['Authorization'] = `Bearer ${authToken}`
               const passwordChars = []
               for (const i of Array(randomInt(16, 49)).keys())
                 passwordChars.push(String.fromCodePoint(randomInt(33, 127)))
