@@ -14,7 +14,7 @@ const checkStatus = async (desired, res) => {
 
 const hexDigitsRegExp = /^0x(?<content>[0-9a-f]*?)0*$/
 
-// {chainId: {pubkey: {url, enabled, feeRecipient, graffiti, status}, ...}, ...}
+// {chainId: {pubkey: {url, enabled, feerecipient, graffiti, status}, ...}, ...}
 async function computeVcState(vcsConfig) {
   const vcState = {}
   for (const [chainId, vcs] of Object.entries(vcsConfig)) {
@@ -40,7 +40,7 @@ async function computeVcState(vcsConfig) {
           const res = await fetch(`${url}/eth/v1/validator/${voting_pubkey}/feerecipient`, {headers})
           if (await checkStatus(200, res)) {
             const json = await res.json()
-            validator.feeRecipient = json.data.ethaddress
+            validator.feerecipient = json.data.ethaddress
           }
         }
         {
@@ -94,14 +94,14 @@ function computeDiscrepancies(vcState) {
         continue
       }
       const srvEnabled = reverseLogs.find(({type}) => type == 'SetEnabled')?.enabled
-      const srvFeeRecipient = reverseLogs.find(({type}) => type == 'SetFeeRecipient')?.feeRecipient
+      const srvFeeRecipient = reverseLogs.find(({type}) => type == 'SetFeeRecipient')?.feerecipient
       const srvGraffiti = reverseLogs.find(({type}) => type == 'SetGraffiti')?.graffiti
       const srvExited = reverseLogs.find(({type}) => type == 'Exit')
       const base = {chainId, address, index, pubkey, url: validator.url}
       if (validator.enabled !== srvEnabled)
         discrepancies.push({...base, issue: 'enabled', srv: srvEnabled, vc: validator.enabled})
-      if (validator.feeRecipient !== srvFeeRecipient)
-        discrepancies.push({...base, issue: 'feeRecipient', srv: srvFeeRecipient, vc: validator.feeRecipient})
+      if (validator.feerecipient !== srvFeeRecipient)
+        discrepancies.push({...base, issue: 'feeRecipient', srv: srvFeeRecipient, vc: validator.feerecipient})
       if (validator.graffiti !== srvGraffiti)
         discrepancies.push({...base, issue: 'graffiti', srv: srvGraffiti, vc: validator.graffiti})
       if (!srvExited == exitStatuses.includes(validator.status))
