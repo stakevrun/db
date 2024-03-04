@@ -166,10 +166,12 @@ createInterface({input: process.stdin}).on('line', async (line) => {
             else {
               console.log(`${logPrefix}Importing keystore into VC`)
               await ensureVcState()
+              const vcs = vcsConfig[d.chainId] || []
               const validatorsByPubkey = vcState[d.chainId] || {}
               const pubkeysPerUrl = {}
+              vcs.forEach(({url}) => pubkeysPerUrl[url] = 0)
               for (const [pubkey, {url}] of Object.entries(validatorsByPubkey))
-                pubkeysPerUrl[url] = pubkeysPerUrl[url] || 0 + 1
+                pubkeysPerUrl[url]++
               const leastFullVC = Object.entries(pubkeysPerUrl).sort((a, b) => a[1] - b[1])?.[0]
               if (!leastFullVC) {
                 console.error(`No VC available, cannot import keystore`)
