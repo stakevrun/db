@@ -64,7 +64,7 @@ function computeDiscrepancies(vcState) {
     const pubkeysWithAddresses = readdirSync(chainDir, {recursive: true})
     for (const pubkeyWithAddress of pubkeysWithAddresses) {
       const [address, pubkey] = pubkeyWithAddress.split('/')
-      if (!pubkey) continue
+      if (address == 'a' || !pubkey) continue
       srvPubkeys.push(pubkey)
       const validator = validatorsByPubkey[pubkey]
       if (!validator) {
