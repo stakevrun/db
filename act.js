@@ -1,9 +1,7 @@
-import { workDir, gitCheck, readJSONL, pathsFromIndex, prv } from './lib.js'
+import { workDir, gitCheck, readJSONL, pathsFromIndex, chainIds, prv } from './lib.js'
 import { readFileSync, readdirSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { randomInt } from 'node:crypto'
-
-const beaconUrl = process.env.BN || 'http://localhost:5052'
 
 const authTokens = new Map()
 
@@ -19,6 +17,11 @@ async function computeVcState(vcsConfig) {
   const vcState = {}
   for (const [chainId, vcs] of Object.entries(vcsConfig)) {
     if (chainId in vcState) throw new Error(`Duplicate chainId ${chainId}`)
+    const network = chainIds[chainId]
+    if (!network) throw new Error(`Unknown chainId ${chainId}`)
+    const bnPorts = readFileSync(`/usr/share/vrün/bnports-${network}`, 'utf8').split('\n')
+    if (!bnPorts?.length) throw new Error(`No beacon node ports for ${chainId}`)
+    const beaconUrl = `http://localhost:${bnPorts[0]}`
     const validatorsByPubkey = {}
     vcState[chainId] = validatorsByPubkey
     for (const {url, authToken} of vcs) {
