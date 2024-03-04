@@ -120,6 +120,9 @@ where `depositDataRoot` is a 0x-prefixed hexstring of 32 bytes, and
 `signature` is a 0x-prefixed hexstring encoding a signature over
 `depositDataRoot`.
 
+- `AddValidators` Returns: `{<pubkey>: {depositDataRoot: string, signature: string}, ...}`,
+that is, a response similar to `GetDepositData` for each pubkey.
+
 Any issues with processing the body (wrong content-type, bad signature,
 malformed instruction, invalid instruction) will get a 40x response with a
 plain text error message body.
