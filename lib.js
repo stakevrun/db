@@ -2,8 +2,13 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 
 export const chainIds = {
-  1: 'mainnet',
+      1: 'mainnet',
   17000: 'holesky'
+}
+
+export const genesisForkVersion = {
+      1: Buffer.from('00000000', 'hex'),
+  17000: Buffer.from('01017000', 'hex')
 }
 
 export const addressRe = '0x[0-9a-f]{40}'

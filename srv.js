@@ -1,4 +1,4 @@
-import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRe, addressRegExp, readJSONL, pathsFromIndex, prv } from './lib.js'
+import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRe, addressRegExp, readJSONL, pathsFromIndex, genesisForkVersion, prv } from './lib.js'
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, existsSync, readdirSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
@@ -244,7 +244,10 @@ const computeDepositData = ({amountGwei, pubkey, withdrawalCredentials, chainId,
 
   const domain = new Uint8Array(32)
   domain[0] = 3
-  domain.set(merkleRoot([zero32, zero32]).slice(0, 28), 4)
+  const forkVersion = new Uint8Array(32)
+  forkVersion.set(genesisForkVersion[chainId])
+  const forkDataRoot = merkleRoot([forkVersion, zero32])
+  domain.set(forkDataRoot.slice(0, 28), 4)
   const signingRoot = merkleRoot([depositMessageRoot, domain])
   const signature = prv('sign', {chainId, address, path}, signingRoot)
   const signatureBytes = hexToBytes(signature)
