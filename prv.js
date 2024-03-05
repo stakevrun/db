@@ -57,6 +57,7 @@ if (process.env.COMMAND == 'generate') {
 }
 else {
   const seed = readFileSync(seedPath)
+  if (!process.env.KEYPATH) throw new Error('missing keypath')
   const sk = privkeyFromPath(seed, process.env.KEYPATH)
   switch (process.env.COMMAND) {
     case 'pubkey': {
