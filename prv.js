@@ -1,7 +1,7 @@
 import { errorPrefix } from './lib.js'
 process.setUncaughtExceptionCaptureCallback((e) => console.log(`${errorPrefix}${e.message}`))
 
-import { randomSeed, privkeyFromPath, pubkeyFromPrivkey, generateKeystore, toHex } from './sig.js'
+import { randomSeed, privkeyFromPath, pubkeyFromPrivkey, generateKeystore, toHex, I2OSP } from './sig.js'
 import bls from '@chainsafe/bls'
 import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRegExp } from './lib.js'
 import { mkdirSync, existsSync, writeFileSync, readFileSync } from 'node:fs'
@@ -73,10 +73,7 @@ else {
       break
     }
     case 'sign': {
-      const skView = new DataView(new ArrayBuffer(32))
-      skView.setUint32(0, sk)
-      const skBytes = new Uint8Array(skView.buffer)
-      const sig = bls.sign(skBytes, readFileSync(process.stdin.fd))
+      const sig = bls.sign(I2OSP(sk, 32), readFileSync(process.stdin.fd))
       console.log(`0x${toHex(sig)}`)
       break
     }
