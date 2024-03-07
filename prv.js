@@ -2,7 +2,7 @@ import { errorPrefix } from './lib.js'
 process.setUncaughtExceptionCaptureCallback((e) => console.log(`${errorPrefix}${e.message}`))
 
 import { randomSeed, privkeyFromPath, pubkeyFromPrivkey, generateKeystore, toHex } from './sig.js'
-import { bls12_381 } from '@noble/curves/bls12-381'
+import bls from '@chainsafe/bls'
 import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRegExp } from './lib.js'
 import { mkdirSync, existsSync, writeFileSync, readFileSync } from 'node:fs'
 
@@ -73,7 +73,7 @@ else {
       break
     }
     case 'sign': {
-      const sig = bls12_381.sign(readFileSync(process.stdin.fd), sk)
+      const sig = bls.sign(sk, readFileSync(process.stdin.fd))
       console.log(`0x${toHex(sig)}`)
       break
     }
