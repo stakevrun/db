@@ -223,7 +223,8 @@ export const generateKeystore = ({sk, path, pubkey, password}) => {
   const r = 8
   const p = 1
   const n = 262144
-  const derivedKey = scryptSync(password, saltBytes, dklen, {r, p, N: n})
+  const maxmem = 128 * n * r * 2
+  const derivedKey = scryptSync(password, saltBytes, dklen, {r, p, N: n, maxmem})
   const algorithm = 'aes-128-ctr'
   const ivBytes = randomBytes(16)
   const iv = toHex(ivBytes)
