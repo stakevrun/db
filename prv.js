@@ -73,7 +73,10 @@ else {
       break
     }
     case 'sign': {
-      const sig = bls.sign(sk, readFileSync(process.stdin.fd))
+      const skView = new DataView(new ArrayBuffer(32))
+      skView.setUint32(0, sk)
+      const skBytes = new Uint8Array(skView.buffer)
+      const sig = bls.sign(skBytes, readFileSync(process.stdin.fd))
       console.log(`0x${toHex(sig)}`)
       break
     }
