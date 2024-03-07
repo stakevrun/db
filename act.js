@@ -137,6 +137,15 @@ async function ensureDiscrepancies() {
 
 createInterface({input: process.stdin}).on('line', async (line) => {
   switch (line) {
+    case 'r':
+    case 's':
+      console.log(`Got request to refresh state`)
+      vcState = undefined
+      await ensureVcState()
+      if (line != 'r') break
+    case 'd':
+      console.log(`Got request to refresh discrepancies`)
+      discrepancies = undefined
     case 'p':
       console.log(`Got request to print discrepancies`)
       await ensureDiscrepancies()
@@ -144,20 +153,10 @@ createInterface({input: process.stdin}).on('line', async (line) => {
       discrepancies.forEach((x, i) => console.log(`${i}: ${JSON.stringify(x)}`))
       console.log(`End of Discrepancies`)
       break
-    case 'd':
-      console.log(`Got request to refresh discrepancies`)
-      discrepancies = undefined
-      await ensureDiscrepancies()
-      break
     case 'c':
       console.log(`Got request to refresh config`)
       vcsConfig = undefined
       ensureVcsConfig()
-      break
-    case 's':
-      console.log(`Got request to refresh state`)
-      vcState = undefined
-      await ensureVcState()
       break
     default:
       const [f, i] = line.split(' ', 2)
