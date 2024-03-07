@@ -5,6 +5,6 @@
   "type": "module",
   "dependencies": {
     "ethereum-cryptography": "2",
-    "@chainsafe/bls": "7"
+    "@noble/curves": "1"
   }
 }

@@ -20,7 +20,7 @@ function OS2IP(a) {
   return result
 }
 
-export function I2OSP(n, l) {
+function I2OSP(n, l) {
   const result = new Uint8Array(l)
   while (l) {
     result[--l] = parseInt(n % 256n)
