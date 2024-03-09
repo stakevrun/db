@@ -18,7 +18,7 @@ ensureDirs()
 // the log is an append-only record of user instructions
 //
 // log entries are the 'instruction' objects described below with the pubkey
-// field removed and a type key added.
+// field removed and type and signature keys added.
 //
 // every change to the database is committed in work and pushed to bare
 // if this succeeds we send back the successful HTTP response
@@ -467,7 +467,7 @@ createServer((req, res) => {
             const existing = !(nextIndex == null || nextIndex == index)
             if (!existing) {
               const timestamp = Math.floor(Date.now() / 1000).toString()
-              addLogLine(logPath, {type, timestamp, ...data})
+              addLogLine(logPath, {type, timestamp, ...data, signature})
             }
             const statusCode = existing ? 200 : 201
             finish(statusCode, JSON.stringify(pubkey))
@@ -497,7 +497,7 @@ createServer((req, res) => {
               }
               else if (type != 'Exit')
                 throw new Error('400:Unknown instruction')
-              const log = {type, ...data}
+              const log = {type, ...data, signature}
               delete log.pubkey
               addLogLine(logPath, log)
               finish(201, '')
