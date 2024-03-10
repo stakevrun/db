@@ -235,11 +235,11 @@ const uint64Root = (i) => {
   return padded
 }
 
-const computeDomain = (type, forkVersion, genesisValidatorRoot) => {
+const computeDomain = (type, forkVersionPrefix, genesisValidatorRoot) => {
   const domain = new Uint8Array(32)
   domain[0] = type
   const forkVersion = new Uint8Array(32)
-  forkVersion.set(forkVersion)
+  forkVersion.set(forkVersionPrefix)
   const forkDataRoot = merkleRoot([forkVersion, genesisValidatorRoot])
   domain.set(forkDataRoot.slice(0, 28), 4)
   return domain
