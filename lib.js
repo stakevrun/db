@@ -11,6 +11,16 @@ export const genesisForkVersion = {
   17000: Buffer.from('01017000', 'hex')
 }
 
+export const capellaForkVersion = {
+      1: Buffer.from('03000000', 'hex'),
+  17000: Buffer.from('04017000', 'hex')
+}
+
+export const genesisValidatorRoot = {
+      1: Buffer.from('4b363db94e286120d76eb905340fdd4e54bfe9f06bf33ff6cf5ad27f511bfe95', 'hex'),
+  17000: Buffer.from('9143aa7c615a7f7115e2b6aac319c03529df8242ae705fba9df39b79c59fa8b1', 'hex')
+}
+
 export const addressRe = '0x[0-9a-f]{40}'
 export const addressRegExp = new RegExp(addressRe)
 

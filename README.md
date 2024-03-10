@@ -63,6 +63,12 @@ struct GetDepositData {
   uint256 amountGwei;
 }
 
+struct GetPresignedExit {
+  bytes pubkey;
+  uint256 validatorIndex;
+  uint256 epoch;
+}
+
 struct SetFeeRecipient {
   uint256 timestamp;
   bytes pubkey;
@@ -119,6 +125,8 @@ and index is the index for that pubkey.
 where `depositDataRoot` is a 0x-prefixed hexstring of 32 bytes, and
 `signature` is a 0x-prefixed hexstring encoding a signature over
 `depositDataRoot`.
+
+- `GetPresignedExit` Returns: a <a href=https://ethereum.github.io/keymanager-APIs/?urls.primaryName=dev#/Voluntary%20Exit/signVoluntaryExit>SignedVoluntaryExitResponse</a>.
 
 - `AddValidators` Returns: `{<pubkey>: {depositDataRoot: string, signature: string}, ...}`,
 that is, a response similar to `GetDepositData` for each pubkey.

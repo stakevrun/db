@@ -1,4 +1,4 @@
-import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRe, addressRegExp, readJSONL, pathsFromIndex, genesisForkVersion, prv } from './lib.js'
+import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRe, addressRegExp, readJSONL, pathsFromIndex, genesisForkVersion, capellaForkVersion, prv } from './lib.js'
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, existsSync, readdirSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
@@ -149,6 +149,9 @@ typesForPUT.set('CreateKey', 'uint256 index')
 typesForPOST.set('GetDepositData',
   'bytes pubkey,bytes32 withdrawalCredentials,uint256 amountGwei'
 )
+typesForPOST.set('GetPresignedExit',
+  'bytes pubkey,uint256 validatorIndex,uint256 epoch'
+)
 typesForPOST.set('SetFeeRecipient',
   'uint256 timestamp,bytes pubkey,address feeRecipient'
 )
@@ -224,30 +227,40 @@ const merkleRoot = (leaves) => {
   return leaves.shift()
 }
 
+const uint64Root = (i) => {
+  const bytes = new DataView(new ArrayBuffer(8))
+  bytes.setBigUint64(0, BigInt(i), true)
+  const padded = new Uint8Array(32)
+  padded.set(new Uint8Array(bytes.buffer))
+  return padded
+}
+
+const computeDomain = (type, forkVersion, genesisValidatorRoot) => {
+  const domain = new Uint8Array(32)
+  domain[0] = type
+  const forkVersion = new Uint8Array(32)
+  forkVersion.set(forkVersion)
+  const forkDataRoot = merkleRoot([forkVersion, genesisValidatorRoot])
+  domain.set(forkDataRoot.slice(0, 28), 4)
+  return domain
+}
+
 const computeDepositData = ({amountGwei, pubkey, withdrawalCredentials, chainId, address, path}) => {
   const pubkeyBytes = hexToBytes(pubkey)
   const pubkeyBytesPadded = new Uint8Array(64)
   pubkeyBytesPadded.set(pubkeyBytes)
   const wcBytes = typeof withdrawalCredentials == 'string' ?
     hexToBytes(withdrawalCredentials) : withdrawalCredentials
-  const amountBytes = new DataView(new ArrayBuffer(8))
-  amountBytes.setBigUint64(0, BigInt(amountGwei), true)
-  const amountPadded = new Uint8Array(32)
-  amountPadded.set(new Uint8Array(amountBytes.buffer))
+  const amountRoot = uint64Root(amountGwei)
   const pubkeyRoot = merkleRoot(
     [pubkeyBytesPadded.slice(0, 32), pubkeyBytesPadded.slice(32)]
   )
   const zero32 = new Uint8Array(32)
   const depositMessageRoot = merkleRoot(
-    [pubkeyRoot, wcBytes, amountPadded, zero32]
+    [pubkeyRoot, wcBytes, amountRoot, zero32]
   )
 
-  const domain = new Uint8Array(32)
-  domain[0] = 3
-  const forkVersion = new Uint8Array(32)
-  forkVersion.set(genesisForkVersion[chainId])
-  const forkDataRoot = merkleRoot([forkVersion, zero32])
-  domain.set(forkDataRoot.slice(0, 28), 4)
+  const domain = computeDomain(3, genesisForkVersion[chainId], zero32)
   const signingRoot = merkleRoot([depositMessageRoot, domain])
   const signature = prv('sign', {chainId, address, path}, signingRoot)
   const signatureBytes = hexToBytes(signature)
@@ -258,10 +271,18 @@ const computeDepositData = ({amountGwei, pubkey, withdrawalCredentials, chainId,
   ])
 
   const depositDataRootBytes = merkleRoot(
-    [pubkeyRoot, wcBytes, amountPadded, signatureRoot]
+    [pubkeyRoot, wcBytes, amountRoot, signatureRoot]
   )
   const depositDataRoot = `0x${toHex(depositDataRootBytes)}`
   return {depositDataRoot, signature}
+}
+
+const computePresignedExit = ({validatorIndex, epoch, chainId, address, path}) => {
+  const domain = computeDomain(4, capellaForkVersion[chainId], genesisValidatorRoot[chainId])
+  const voluntaryExitRoot = merkleRoot([uint64Root(epoch), uint64Root(validatorIndex)])
+  const signingRoot = merkleRoot([voluntaryExitRoot, domain])
+  const signature = prv('sign', {chainId, address, path}, signingRoot)
+  return {signature, message: {epoch, validator_index: validatorIndex}}
 }
 
 const allowedMethods = 'GET,HEAD,OPTIONS,POST,PUT'
@@ -481,6 +502,12 @@ createServer((req, res) => {
             if (type == 'GetDepositData') {
               const depositData = computeDepositData({...data, chainId, address, path})
               finish(200, JSON.stringify(depositData))
+            }
+            else if (type == 'GetPresignedExit') {
+              const presignedExit = computePresignedExit({...data, chainId, address, path})
+              const timestamp = Math.floor(Date.now() / 1000).toString()
+              addLogLine(logPath, {type, timestamp, ...data, signature})
+              finish(200, JSON.stringify(presignedExit))
             }
             else {
               const logs = readJSONL(logPath)
