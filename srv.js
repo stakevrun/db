@@ -514,7 +514,7 @@ createServer((req, res) => {
               if (!logs.length) throw new Error(`400:Pubkey has no logs`)
               const lastLog = logs.at(-1)
               if (!(parseInt(lastLog.timestamp) <= parseInt(data.timestamp))) throw new Error(`400:Timestamp too early`)
-              if (!(parseint(data.timestamp) <= (Date.now() / 1000))) throw new Error(`400:Timestamp in the future`)
+              if (!(parseInt(data.timestamp) <= (Date.now() / 1000))) throw new Error(`400:Timestamp in the future`)
               if (logs.some(({type}) => type == 'Exit')) throw new Error(`400:Already exited`)
               if (['SetEnabled', 'SetFeeRecipient', 'SetGraffiti', 'SetName'].includes(type)) {
                 const key = type.slice(3).toLowerCase()
