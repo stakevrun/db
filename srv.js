@@ -1,4 +1,5 @@
-import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRe, addressRegExp, readJSONL, pathsFromIndex, genesisForkVersion, capellaForkVersion, prv } from './lib.js'
+import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRe, addressRegExp, readJSONL, pathsFromIndex,
+         genesisForkVersion, genesisValidatorRoot, capellaForkVersion, prv } from './lib.js'
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, existsSync, readdirSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
