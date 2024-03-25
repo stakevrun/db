@@ -34,6 +34,7 @@ earliest matching logs first.
 
 - `PUT /<chainId>/<address>`
 - `POST /<chainId>/<address>/<index>`
+- `POST /<chainId>/<address>/batch`
 
 The body content-type should be `application/json`.
 
@@ -41,12 +42,21 @@ The body should be JSON in the following format:
 ```
 {type: string, data: <object>, signature: string}
 ```
+or
+```
+{type: string, data: <object>, signature: string, indices: number[]}
+```
 where `signature` is an [EIP-712](https://eips.ethereum.org/EIPS/eip-712)
 signature over `type{...data}` encoded as a compact 0x-prefixed hexstring, with
 `EIP712Domain = {name: "vrün", version: "1", chainId: <chainId>}`.
 
 The possible data objects (instructions) are given below.`PUT` is used for
 `AcceptTermsOfService` and `CreateKey`. `POST` is used for the others.
+
+The `batch` route (with `indices` included in the body) is used exactly when
+the data object has a `pubkeys` component, and the indices should correspond to
+the `pubkeys` if so. Otherwise the `index` in the route should correspond to the
+`pubkey` (if any) in the data object.
 
 ```
 struct AcceptTermsOfService {
@@ -71,19 +81,19 @@ struct GetPresignedExit {
 
 struct SetFeeRecipient {
   uint256 timestamp;
-  bytes pubkey;
+  bytes[] pubkeys;
   address feeRecipient;
 }
 
 struct SetGraffiti {
   uint256 timestamp;
-  bytes pubkey;
+  bytes[] pubkeys;
   string graffiti;
 }
 
 struct SetEnabled {
   uint256 timestamp;
-  bytes pubkey;
+  bytes[] pubkeys;
   bool enabled;
 }
 

@@ -128,6 +128,7 @@ const normaliseData = (data, args) => {
         normalised[key] = BigInt(data[key]).toString()
         break
       case 'address[]':
+      case 'bytes[]':
         normalised[key] = data[key].map(a => a.toLowerCase())
       case 'bool':
       case 'string':
@@ -154,13 +155,13 @@ typesForPOST.set('GetPresignedExit',
   'bytes pubkey,uint256 validatorIndex,uint256 epoch'
 )
 typesForPOST.set('SetFeeRecipient',
-  'uint256 timestamp,bytes pubkey,address feeRecipient'
+  'uint256 timestamp,bytes[] pubkeys,address feeRecipient'
 )
 typesForPOST.set('SetGraffiti',
-  'uint256 timestamp,bytes pubkey,string graffiti'
+  'uint256 timestamp,bytes[] pubkeys,string graffiti'
 )
 typesForPOST.set('SetEnabled',
-  'uint256 timestamp,bytes pubkey,bool enabled'
+  'uint256 timestamp,bytes[] pubkeys,bool enabled'
 )
 typesForPOST.set('Exit',
   'uint256 timestamp,bytes pubkey'
@@ -173,7 +174,7 @@ typesForPOST.set('AddValidators',
 
 const verifyEIP712 = ({body, domainSeparator, typeMap}) => {
   if (!body) throw new Error('400:No data')
-  const {type, data, signature} = JSON.parse(body)
+  const {type, data, signature, indices} = JSON.parse(body)
   if (!(typeMap.has(type))) throw new Error('400:Invalid type')
   const args = typeMap.get(type)
   let sig = signature.startsWith('0x') ? signature.slice(2, -2) : signature.slice(0, -2)
@@ -196,7 +197,7 @@ const verifyEIP712 = ({body, domainSeparator, typeMap}) => {
   const pubkeyForKeccak = sigPubkey.toRawBytes(false).slice(1)
   if (pubkeyForKeccak.length != 64) throw new Error(`500:Unexpected pubkey length ${toHex(pubkeyForKeccak)}`)
   const address = `0x${toHex(keccak256(pubkeyForKeccak).slice(-20))}`
-  return {type, data: normaliseData(data, args.split(',')), address, signature}
+  return {type, data: normaliseData(data, args.split(',')), address, signature, indices}
 }
 
 const addLogLine = (logPath, log) => {
@@ -374,7 +375,7 @@ createServer((req, res) => {
       const [, chainId, address, index] = pathname.split('/')
       if (!domainSeparators.has(chainId)) throw new Error('404:Unknown chainId')
       if (!addressRegExp.test(address)) throw new Error('404:Invalid address')
-      if (typeof index == 'string' && !numberRegExp.test(index)) throw new Error('404:Invalid index')
+      if (typeof index == 'string' && !numberRegExp.test(index) && index !== 'batch') throw new Error('404:Invalid index')
       const [contentType, charset] = req.headers['content-type']?.split(';') || []
       if (contentType !== 'application/json')
         throw new Error('415:Accepts application/json only')
@@ -387,8 +388,10 @@ createServer((req, res) => {
         try {
           const typeMap = req.method == 'PUT' ? typesForPUT : typesForPOST
           const domainSeparator = domainSeparators.get(chainId)
-          const {type, data, address: sigAddress, signature} = verifyEIP712({domainSeparator, body, typeMap})
+          const {type, data, address: sigAddress, signature, indices} = verifyEIP712({domainSeparator, body, typeMap})
           if (sigAddress !== address) throw new Error(`400:Address mismatch: ${sigAddress}`)
+          if (index === 'batch' && (!data.pubkeys || !indices || data.pubkeys.length !== indices.length))
+            throw new Error(`400:Invalid indices/pubkeys`)
           const addressPath = `${workDir}/${chainId}/${address}`
           const acceptanceDir = `${workDir}/${chainId}/a`
           const acceptancePath = `${acceptanceDir}/${address}`
@@ -488,6 +491,31 @@ createServer((req, res) => {
             const statusCode = existing ? 200 : 201
             finish(statusCode, JSON.stringify(pubkey))
           }
+          else if (['SetEnabled', 'SetFeeRecipient', 'SetGraffiti'].includes(type)) {
+            const logsToAdd = []
+            for (const [i, dataPubkey] of data.pubkeys.entries()) {
+              const index = indices[i]
+              const logPath = `${addressPath}/${dataPubkey}`
+              if (!existsSync(logPath)) throw new Error(`400:Unknown pubkey`)
+              const {signing: path} = pathsFromIndex(index)
+              const pubkey = prv('pubkey', {chainId, address, path})
+              if (pubkey !== dataPubkey) throw new Error(`400:Wrong pubkey for index ${index}`)
+              const logs = readJSONL(logPath)
+              if (!logs.length) throw new Error(`400:Pubkey ${pubkey} has no logs`)
+              if (logs.some(({type}) => type == 'Exit')) throw new Error(`400:Already exited ${pubkey}`)
+              const lastLog = logs.at(-1)
+              if (!(parseInt(lastLog.timestamp) <= parseInt(data.timestamp))) throw new Error(`400:Timestamp too early for ${pubkey}`)
+              if (!(parseInt(data.timestamp) <= (Date.now() / 1000))) throw new Error(`400:Timestamp in the future for ${pubkey}`)
+              const log = {type, ...data, signature}
+              const key = type.slice(3).toLowerCase()
+              const lastLog = logs.toReversed().find(({type: logType}) => logType == type)
+              if (lastLog?.[key] === data[key]) throw new Error(`400:Setting unchanged for ${pubkey}`)
+              logsToAdd.push({logPath, log})
+            }
+            for (const {logPath, log} of logsToAdd)
+              addLogLine(logPath, log)
+            finish(201, '')
+          }
           else {
             const logPath = `${addressPath}/${data.pubkey}`
             if (!existsSync(logPath)) throw new Error(`400:Unknown pubkey`)
@@ -510,15 +538,8 @@ createServer((req, res) => {
               const lastLog = logs.at(-1)
               if (!(parseInt(lastLog.timestamp) <= parseInt(data.timestamp))) throw new Error(`400:Timestamp too early`)
               if (!(parseInt(data.timestamp) <= (Date.now() / 1000))) throw new Error(`400:Timestamp in the future`)
+              if (type != 'Exit') throw new Error('400:Unknown instruction')
               if (logs.some(({type}) => type == 'Exit')) throw new Error(`400:Already exited`)
-              if (['SetEnabled', 'SetFeeRecipient', 'SetGraffiti'].includes(type)) {
-                const key = type.slice(3).toLowerCase()
-                const lastLog = logs.toReversed().find(({type: logType}) => logType == type)
-                if (lastLog?.[key] === data[key])
-                  throw new Error(`400:Setting unchanged`)
-              }
-              else if (type != 'Exit')
-                throw new Error('400:Unknown instruction')
               const log = {type, ...data, signature}
               delete log.pubkey
               addLogLine(logPath, log)
