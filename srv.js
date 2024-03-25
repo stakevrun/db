@@ -508,8 +508,8 @@ createServer((req, res) => {
               if (!(parseInt(data.timestamp) <= (Date.now() / 1000))) throw new Error(`400:Timestamp in the future for ${pubkey}`)
               const log = {type, ...data, signature}
               const key = type.slice(3).toLowerCase()
-              const lastLog = logs.toReversed().find(({type: logType}) => logType == type)
-              if (lastLog?.[key] === data[key]) throw new Error(`400:Setting unchanged for ${pubkey}`)
+              const lastLogOfType = logs.toReversed().find(({type: logType}) => logType == type)
+              if (lastLogOfType?.[key] === data[key]) throw new Error(`400:Setting unchanged for ${pubkey}`)
               logsToAdd.push({logPath, log})
             }
             for (const {logPath, log} of logsToAdd)
