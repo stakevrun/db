@@ -159,9 +159,6 @@ typesForPOST.set('SetFeeRecipient',
 typesForPOST.set('SetGraffiti',
   'uint256 timestamp,bytes pubkey,string graffiti'
 )
-typesForPOST.set('SetName',
-  'uint256 timestamp,bytes pubkey,string name'
-)
 typesForPOST.set('SetEnabled',
   'uint256 timestamp,bytes pubkey,bool enabled'
 )
@@ -171,7 +168,7 @@ typesForPOST.set('Exit',
 typesForPOST.set('AddValidators',
   'uint256 timestamp,uint256 firstIndex,' +
   'uint256 amountGwei,address feeRecipient,string graffiti,' +
-  'address[] withdrawalAddresses,string[] names'
+  'address[] withdrawalAddresses'
 )
 
 const verifyEIP712 = ({body, domainSeparator, typeMap}) => {
@@ -412,10 +409,8 @@ createServer((req, res) => {
             const depositDataByPubkey = {}
             const timestamp = parseInt(data.timestamp)
             if (!(timestamp <= (Date.now() / 1000))) throw new Error(`400:Timestamp in the future`)
-            if (data.withdrawalAddresses.length !== data.names.length)
-              throw new Error(`400:Mismatching numbers of names and withdrawal addresses`)
             let index = firstIndex
-            for (const [i, withdrawalAddress] of data.withdrawalAddresses.entries()) {
+            for (const withdrawalAddress of data.withdrawalAddresses) {
               const existing = index < nextIndex
               const {signing: path} = pathsFromIndex(index)
               const pubkey = prv('pubkey', {chainId, address, path})
@@ -436,7 +431,6 @@ createServer((req, res) => {
               if (logs.some(({type}) => type == 'Exit')) throw new Error(`400:Already exited`)
               for (const [type, value] of [['SetFeeRecipient', data.feeRecipient],
                                            ['SetGraffiti', data.graffiti],
-                                           ['SetName', data.names[i]],
                                            ['SetEnabled', true]]) {
                 const key = type.slice(3).toLowerCase()
                 const lastLog = logs.toReversed().find(({type: logType}) => logType == type)
@@ -517,7 +511,7 @@ createServer((req, res) => {
               if (!(parseInt(lastLog.timestamp) <= parseInt(data.timestamp))) throw new Error(`400:Timestamp too early`)
               if (!(parseInt(data.timestamp) <= (Date.now() / 1000))) throw new Error(`400:Timestamp in the future`)
               if (logs.some(({type}) => type == 'Exit')) throw new Error(`400:Already exited`)
-              if (['SetEnabled', 'SetFeeRecipient', 'SetGraffiti', 'SetName'].includes(type)) {
+              if (['SetEnabled', 'SetFeeRecipient', 'SetGraffiti'].includes(type)) {
                 const key = type.slice(3).toLowerCase()
                 const lastLog = logs.toReversed().find(({type: logType}) => logType == type)
                 if (lastLog?.[key] === data[key])
