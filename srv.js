@@ -435,7 +435,8 @@ createServer((req, res) => {
               for (const [type, value] of [['SetFeeRecipient', data.feeRecipient],
                                            ['SetGraffiti', data.graffiti],
                                            ['SetEnabled', true]]) {
-                const key = type.slice(3).toLowerCase()
+                const keyCap = type.slice(3)
+                const key = `${keyCap.slice(0, 1).toLowerCase()}${keyCap.slice(1)}`
                 const lastLog = logs.toReversed().find(({type: logType}) => logType == type)
                 if (lastLog?.[key] === value) throw new Error(`400:Setting unchanged`)
                 newLogsForPubkey.push({type, timestamp: timestamp.toString(), [key]: value})
@@ -507,7 +508,8 @@ createServer((req, res) => {
               if (!(parseInt(lastLog.timestamp) <= parseInt(data.timestamp))) throw new Error(`400:Timestamp too early for ${pubkey}`)
               if (!(parseInt(data.timestamp) <= (Date.now() / 1000))) throw new Error(`400:Timestamp in the future for ${pubkey}`)
               const log = {type, ...data, signature}
-              const key = type.slice(3).toLowerCase()
+              const keyCap = type.slice(3)
+              const key = `${keyCap.slice(0, 1).toLowerCase()}${keyCap.slice(1)}`
               const lastLogOfType = logs.toReversed().find(({type: logType}) => logType == type)
               if (lastLogOfType?.[key] === data[key]) throw new Error(`400:Setting unchanged for ${pubkey}`)
               logsToAdd.push({logPath, log})

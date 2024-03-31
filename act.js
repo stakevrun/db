@@ -94,7 +94,7 @@ function computeDiscrepancies(vcState) {
         continue
       }
       const srvEnabled = reverseLogs.find(({type}) => type == 'SetEnabled')?.enabled
-      const srvFeeRecipient = reverseLogs.find(({type}) => type == 'SetFeeRecipient')?.feerecipient
+      const srvFeeRecipient = reverseLogs.find(({type}) => type == 'SetFeeRecipient')?.feeRecipient
       const srvGraffiti = reverseLogs.find(({type}) => type == 'SetGraffiti')?.graffiti
       const srvExited = reverseLogs.find(({type}) => type == 'Exit')
       const base = {chainId, address, index, pubkey, url: validator.url}
