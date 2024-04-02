@@ -97,11 +97,6 @@ struct SetEnabled {
   bool enabled;
 }
 
-struct Exit {
-  uint256 timestamp;
-  bytes pubkey;
-}
-
 struct AddValidators {
   uint256 timestamp;
   uint256 firstIndex;

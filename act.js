@@ -64,13 +64,6 @@ async function computeVcState(vcsConfig) {
   return vcState
 }
 
-const exitStatuses = [
-  'active_exiting',
-  'exited_unslashed',
-  'withdrawal_possible',
-  'withdrawal_done'
-]
-
 function computeDiscrepancies(vcState) {
   gitCheck(['status', '--porcelain'], workDir, '', 'work directory not clean')
   const discrepancies = []
@@ -96,7 +89,6 @@ function computeDiscrepancies(vcState) {
       const srvEnabled = reverseLogs.find(({type}) => type == 'SetEnabled')?.enabled
       const srvFeeRecipient = reverseLogs.find(({type}) => type == 'SetFeeRecipient')?.feeRecipient
       const srvGraffiti = reverseLogs.find(({type}) => type == 'SetGraffiti')?.graffiti
-      const srvExited = reverseLogs.find(({type}) => type == 'Exit')
       const base = {chainId, address, index, pubkey, url: validator.url}
       if (validator.enabled !== srvEnabled)
         discrepancies.push({...base, issue: 'enabled', srv: srvEnabled, vc: validator.enabled})
@@ -104,8 +96,6 @@ function computeDiscrepancies(vcState) {
         discrepancies.push({...base, issue: 'feeRecipient', srv: srvFeeRecipient, vc: validator.feerecipient})
       if (validator.graffiti !== srvGraffiti)
         discrepancies.push({...base, issue: 'graffiti', srv: srvGraffiti, vc: validator.graffiti})
-      if (!srvExited == exitStatuses.includes(validator.status))
-        discrepancies.push({...base, issue: 'exit', srv: srvExited, vc: validator.status})
     }
     for (const pubkey of Object.keys(validatorsByPubkey))
       if (!srvPubkeys.includes(pubkey))
@@ -221,16 +211,6 @@ createInterface({input: process.stdin}).on('line', async (line) => {
             await checkStatus(202,
               await fetch(`${d.url}/eth/v1/validator/${d.pubkey}/graffiti`,
                 {headers, method: 'POST', body: `{"graffiti": "${d.srv}"}`}))
-            break
-          case 'exit':
-            console.log(`${logPrefix}Requested exit but status is ${d.vc}. Creating exit message...`)
-            const res = await fetch(`${d.url}/eth/v1/validator/${d.pubkey}/voluntary_exit`,
-              {headers, method: 'POST'})
-            if (await checkStatus(200, res)) {
-              const exitMessage = await res.json()
-              console.log(`Produced exit message: ${JSON.stringify(exitMessage)}`)
-              // TODO: broadcast to beacon node?
-            }
             break
           default:
             console.error(`Unknown discrepancy '${d.issue}'`)

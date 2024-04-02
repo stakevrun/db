@@ -163,9 +163,6 @@ typesForPOST.set('SetGraffiti',
 typesForPOST.set('SetEnabled',
   'uint256 timestamp,bytes[] pubkeys,bool enabled'
 )
-typesForPOST.set('Exit',
-  'uint256 timestamp,bytes pubkey'
-)
 typesForPOST.set('AddValidators',
   'uint256 timestamp,uint256 firstIndex,' +
   'uint256 amountGwei,address feeRecipient,string graffiti,' +
@@ -431,7 +428,6 @@ createServer((req, res) => {
               depositDataByPubkey[pubkey] = depositData
               const logs = existing ? readJSONL(logPath) : []
               if (logs.length && !(parseInt(logs.at(-1).timestamp) <= timestamp)) throw new Error(`400:Timestamp too early`)
-              if (logs.some(({type}) => type == 'Exit')) throw new Error(`400:Already exited`)
               for (const [type, value] of [['SetFeeRecipient', data.feeRecipient],
                                            ['SetGraffiti', data.graffiti],
                                            ['SetEnabled', true]]) {
@@ -503,7 +499,6 @@ createServer((req, res) => {
               if (pubkey !== dataPubkey) throw new Error(`400:Wrong pubkey for index ${index}`)
               const logs = readJSONL(logPath)
               if (!logs.length) throw new Error(`400:Pubkey ${pubkey} has no logs`)
-              if (logs.some(({type}) => type == 'Exit')) throw new Error(`400:Already exited ${pubkey}`)
               const lastLog = logs.at(-1)
               if (!(parseInt(lastLog.timestamp) <= parseInt(data.timestamp))) throw new Error(`400:Timestamp too early for ${pubkey}`)
               if (!(parseInt(data.timestamp) <= (Date.now() / 1000))) throw new Error(`400:Timestamp in the future for ${pubkey}`)
@@ -534,19 +529,7 @@ createServer((req, res) => {
               addLogLine(logPath, {type, timestamp, ...data, signature})
               finish(200, JSON.stringify(presignedExit))
             }
-            else {
-              const logs = readJSONL(logPath)
-              if (!logs.length) throw new Error(`400:Pubkey has no logs`)
-              const lastLog = logs.at(-1)
-              if (!(parseInt(lastLog.timestamp) <= parseInt(data.timestamp))) throw new Error(`400:Timestamp too early`)
-              if (!(parseInt(data.timestamp) <= (Date.now() / 1000))) throw new Error(`400:Timestamp in the future`)
-              if (type != 'Exit') throw new Error('400:Unknown instruction')
-              if (logs.some(({type}) => type == 'Exit')) throw new Error(`400:Already exited`)
-              const log = {type, ...data, signature}
-              delete log.pubkey
-              addLogLine(logPath, log)
-              finish(201, '')
-            }
+            else throw new Error('400:Unknown instruction')
           }
         }
         catch (e) { handler(e) }
