@@ -1,0 +1,10 @@
+[Unit]
+Description=vrün db secret manager
+
+[Service]
+ExecStart=node prv
+WorkingDirectory=/usr/share/vrün
+Type=oneshot
+User=vrundb
+Environment=STATE_DIR=/mnt/crypt
+StandardInput=socket
