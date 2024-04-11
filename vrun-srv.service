@@ -5,6 +5,6 @@ Description=vrün db server
 ExecStart=node srv
 WorkingDirectory=/usr/share/vrün
 Type=exec
-DynamicUser=yes
-StateDirectory=vrunsrv
-Environment=STATE_DIR=/var/lib/vrunsrv
+User=vrundb
+Environment=STATE_DIR=/mnt/crypt
+Environment=PRV_HOST=TODO

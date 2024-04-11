@@ -5,10 +5,7 @@ Description=vrün db actor
 ExecStart=node act
 WorkingDirectory=/usr/share/vrün
 Type=exec
-DynamicUser=yes
-User=vrun-srv
-Group=vrun-srv
-StateDirectory=vrunsrv
-Environment=STATE_DIR=/var/lib/vrunsrv
+User=vrundb
+Environment=STATE_DIR=/mnt/crypt
 StandardInput=socket
 StandardOutput=journal
