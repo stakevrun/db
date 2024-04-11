@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
+import { createConnection } from 'node:net'
 
 export const chainIds = {
       1: 'mainnet',
@@ -38,26 +39,46 @@ export const pathsFromIndex = index => {
 }
 
 export const errorPrefix = 'error: '
-export const prv = (cmd, {chainId, address, path, password}, input) => {
-  const env = {COMMAND: cmd, CHAINID: chainId, ADDRESS: address}
-  const args = [
-    '--quiet', '--collect', '--same-dir', '--wait', '--pipe',
-    '--unit=vrunprv', '--expand-environment=no', '--property=DynamicUser=yes',
-    '--property=StateDirectory=vrunprv', '--setenv=STATE_DIR=/var/lib/vrunprv',
-    '--setenv=COMMAND', '--setenv=CHAINID', '--setenv=ADDRESS'
-  ]
-  if (path) { env.KEYPATH = path; args.push('--setenv=KEYPATH') }
-  if (password) { env.KEYPASS = password; args.push('--setenv=KEYPASS') }
-  args.push('node', 'prv')
-  const res = spawnSync('systemd-run', args, {env, input})
-  const stdout = res.stdout.toString()
+const prvPort = 6000
+export const prv = (command, {chainId, address, path, password}, input) => {
+  const lines = []
+  lines.push(`CHAINID = ${chainId}`)
+  lines.push(`ADDRESS = ${address}`)
+  lines.push(`COMMAND = ${command}`)
+  if (path) lines.push(`KEYPASS = ${path}`)
+  if (password) lines.push(`KEYPASS = ${password}`)
+  if (input) lines.push(`MESSAGE = ${input}`)
+
+  const arr = new Int32Array(new SharedArrayBuffer(1))
+  const nfy = () => {
+    Atomics.store(arr, 0, 1)
+    Atomics.notify(arr, 0)
+  }
+  const res = []
+  const err = []
+  const socket = createConnection(prvPort, process.env.PRV_HOST).setEncoding('utf8')
+  socket.on('data', chunk => res.push(chunk))
+  socket.on('error', error => err.push(error))
+  socket.once('end', nfy)
+  socket.once('close', hadError => {
+    if (hadError) err.push(hadError)
+    nfy()
+  })
+  for (const line of lines) {
+    socket.write(line)
+    socket.write('\n')
+  }
+  socket.end()
+  Atomics.wait(arr, 0, 0)
+
+  const stdout = res.join('')
   const hasError = stdout.startsWith(errorPrefix)
-  if (res.status === 0 && !hasError)
+  if (err.length === 0 && !hasError)
     return stdout.trimEnd()
   else if (hasError)
     throw new Error(`500:${stdout.slice(errorPrefix.length)}`)
   else
-    throw new Error(`500:prv failed: status ${res.status}, stdout '${stdout}', stderr '${res.stderr}'`)
+    throw new Error(`500:prv failed: errors ${err.join()}, stdout '${stdout}'`)
 }
 
 const stateDir = process.env.STATE_DIR
