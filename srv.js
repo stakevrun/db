@@ -1,6 +1,5 @@
 import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRe, addressRegExp, readJSONL, pathsFromIndex,
          genesisForkVersion, genesisValidatorRoot, capellaForkVersion, prv } from './lib.js'
-import { spawnSync } from 'node:child_process'
 import { mkdirSync, existsSync, readdirSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { sha256 } from "ethereum-cryptography/sha256.js";
@@ -258,7 +257,7 @@ const computeDepositData = ({amountGwei, pubkey, withdrawalCredentials, chainId,
 
   const domain = computeDomain(3, genesisForkVersion[chainId], zero32)
   const signingRoot = merkleRoot([depositMessageRoot, domain])
-  const signature = prv('sign', {chainId, address, path}, signingRoot)
+  const signature = prv('sign', {chainId, address, path}, `0x${toHex(signingRoot)}`)
   const signatureBytes = hexToBytes(signature)
 
   const signatureRoot = merkleRoot([
@@ -277,7 +276,7 @@ const computePresignedExit = ({validatorIndex, epoch, chainId, address, path}) =
   const domain = computeDomain(4, capellaForkVersion[chainId], genesisValidatorRoot[chainId])
   const voluntaryExitRoot = merkleRoot([uint64Root(epoch), uint64Root(validatorIndex)])
   const signingRoot = merkleRoot([voluntaryExitRoot, domain])
-  const signature = prv('sign', {chainId, address, path}, signingRoot)
+  const signature = prv('sign', {chainId, address, path}, `0x${toHex(signingRoot)}`)
   return {signature, message: {epoch, validator_index: validatorIndex}}
 }
 

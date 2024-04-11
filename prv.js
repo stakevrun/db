@@ -5,6 +5,7 @@ import { randomSeed, privkeyFromPath, pubkeyFromPrivkey, generateKeystore, toHex
 import { bls12_381 } from '@noble/curves/bls12-381'
 import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRegExp } from './lib.js'
 import { mkdirSync, existsSync, writeFileSync, readFileSync } from 'node:fs'
+import { createInterface } from 'node:readline'
 
 ensureDirs()
 
@@ -12,32 +13,50 @@ ensureDirs()
 // ${chainId}/${address} : 32 bytes (no encoding)
 
 // prv: private key management
-// takes environment variables and stdin for input (raw bytes) and produces
-// output on stdout
-// input variables:
-// COMMAND = one of ( generate | pubkey | keystore | sign )
+// takes stdin for input and produces output on stdout
+// the input is lines of the form <VARIABLE> = <VALUE>, which must occur in the
+// following order only including the variables relevant to the command:
 // CHAINID = decimal string identifying the chain
 // ADDRESS = hexstring indicating the seed's owner
+// COMMAND = one of ( generate | pubkey | keystore | sign )
 // KEYPATH = string indicating the path for key derivation
 // KEYPASS = string to use as password for the keystore
+// MESSAGE = hexstring of the data to sign
 //
 // generate: ensure the seed for ADDRESS exists, return 'created' or 'exists'
 // pubkey:   return the pubkey (hexstring) for ADDRESS's key at KEYPATH
 // keystore: return a JSON-encoded keystore for ADDRESS's key at KEYPATH (protected by KEYPASS)
-// sign:     return signature (hexstring) for input data using ADDRESS's key at KEYPATH
+// sign:     return signature (hexstring) for MESSAGE using ADDRESS's key at KEYPATH
 
-if (!addressRegExp.test(process.env.ADDRESS))
-  throw new Error('invalid address')
+const inputLines = []
+await new Promise(resolve =>
+  createInterface({input: process.stdin}).on(
+    'line', line => inputLines.push(line)
+  ).once('close', resolve)
+)
 
-if (!(process.env.CHAINID in chainIds))
+const readLine = (variable) => {
+  const prefix = `${variable} = `
+  const line = inputLines.shift()
+  if (!(line && line.startsWith(prefix)))
+    throw new Error(`missing ${variable}`)
+  return line.slice(prefix.length)
+}
+
+const chainId = readLine('CHAINID')
+if (!(chainId in chainIds))
   throw new Error('invalid chainId')
 
-const address = process.env.ADDRESS
-const chainId = process.env.CHAINID
+const address = readLine('ADDRESS')
+if (!addressRegExp.test(address))
+  throw new Error('invalid address')
+
 const chainPath = `${workDir}/${chainId}`
 const seedPath = `${chainPath}/${address}`
 
-if (process.env.COMMAND == 'generate') {
+const command = readLine('COMMAND')
+
+if (command == 'generate') {
   if (existsSync(seedPath))
     console.log('exists')
   else {
@@ -57,9 +76,9 @@ if (process.env.COMMAND == 'generate') {
 }
 else {
   const seed = readFileSync(seedPath)
-  if (!process.env.KEYPATH) throw new Error('missing keypath')
-  const sk = privkeyFromPath(seed, process.env.KEYPATH)
-  switch (process.env.COMMAND) {
+  const path = readLine('KEYPATH')
+  const sk = privkeyFromPath(seed, path)
+  switch (command) {
     case 'pubkey': {
       const pk = pubkeyFromPrivkey(sk)
       console.log(`0x${toHex(pk)}`)
@@ -67,14 +86,16 @@ else {
     }
     case 'keystore': {
       const pubkey = pubkeyFromPrivkey(sk)
-      const path = process.env.KEYPATH
-      const password = process.env.KEYPASS
+      const password = readLine('KEYPASS')
       console.log(JSON.stringify(generateKeystore({sk, path, pubkey, password})))
       break
     }
     case 'sign': {
+      const messageHex = readLine('MESSAGE')
+      if (!messageHex.startsWith('0x')) throw new Error('invalid message')
+      const message = Buffer.from(message.slice(2), 'hex')
       const htfEthereum = {DST: 'BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_'}
-      const sig = bls12_381.sign(readFileSync(process.stdin.fd), sk, htfEthereum)
+      const sig = bls12_381.sign(message, sk, htfEthereum)
       console.log(`0x${toHex(sig)}`)
       break
     }
