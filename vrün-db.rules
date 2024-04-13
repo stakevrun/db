@@ -1,6 +1,0 @@
-polkit.addRule(function (action, subject) {
-  if (action.id == "org.freedesktop.systemd1.manage-units" &&
-      subject.isInGroup("vrun-srv") &&
-      action.lookup("unit") === undefined) // https://github.com/systemd/systemd/issues/17224
-  return polkit.Result.YES
-})
