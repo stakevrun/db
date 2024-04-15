@@ -21,9 +21,8 @@ async function computeVcState(vcsConfig) {
     if (chainId in vcState) throw new Error(`Duplicate chainId ${chainId}`)
     const network = chainIds[chainId]
     if (!network) throw new Error(`Unknown chainId ${chainId}`)
-    const bnPorts = readFileSync(`/usr/share/vrün/bnports-${network}`, 'utf8').split('\n')
-    if (!bnPorts?.length) throw new Error(`No beacon node ports for ${chainId}`)
-    const beaconUrl = `http://localhost:${bnPorts[0]}`
+    const beaconUrl = process.env[`${network.toUpperCase()}_BN`]
+    if (!beaconUrl) throw new Error(`No beacon node URL environment variable for ${chainId}`)
     const validatorsByPubkey = {}
     vcState[chainId] = validatorsByPubkey
     for (const {url, authToken} of vcs) {
