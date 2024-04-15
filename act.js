@@ -126,32 +126,31 @@ async function ensureDiscrepancies() {
 
 createInterface({input: process.stdin}).on('line', async (line) => {
   switch (line) {
-    case 'r':
+    case 'c':
+      console.log(`Refreshing config`)
+      vcsConfig = undefined
+      ensureVcsConfig()
     case 's':
-      console.log(`Got request to refresh state`)
+    case 'r':
+      console.log(`Refreshing state`)
       vcState = undefined
       await ensureVcState()
       if (line != 'r') break
     case 'd':
-      console.log(`Got request to refresh discrepancies`)
+      console.log(`Refreshing discrepancies`)
       discrepancies = undefined
     case 'p':
-      console.log(`Got request to print discrepancies`)
+      console.log(`Printing discrepancies`)
       await ensureDiscrepancies()
       console.log(`Discrepancies:`)
       discrepancies.forEach((x, i) => console.log(`${i}: ${JSON.stringify(x)}`))
       console.log(`End of Discrepancies`)
       break
-    case 'c':
-      console.log(`Got request to refresh config`)
-      vcsConfig = undefined
-      ensureVcsConfig()
-      break
     default:
       const [f, i] = line.split(' ', 2)
       if (f === 'f' && 0 <= parseInt(i) && i < discrepancies?.length) {
         const d = discrepancies[i]
-        console.log(`Got request to fix discrepancy ${i}: ${JSON.stringify(d)}`)
+        console.log(`Fixing discrepancy ${i}: ${JSON.stringify(d)}`)
         const headers = {
           'Authorization': `Bearer ${authTokens.get(d.url)}`,
           'Content-Type': 'application/json'
