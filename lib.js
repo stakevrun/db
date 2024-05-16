@@ -47,7 +47,9 @@ export const prv = (command, {chainId, address, path, password}, input) => {
   if (password) lines.push(`KEYPASS = ${password}`)
   if (input) lines.push(`MESSAGE = ${input}`)
 
-  const res = spawnSync('node', ['sck.js'], {input: lines.join('\n')})
+  const res = spawnSync('node', ['sck.js'], {
+    input: lines.join('\n'), encoding: 'utf8'
+  })
 
   const hasError = res.stdout.startsWith(errorPrefix)
   if (res.stderr.length === 0 && !hasError)
