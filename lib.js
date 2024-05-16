@@ -1,6 +1,5 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { createConnection } from 'node:net'
 
 export const chainIds = {
       1: 'mainnet',
@@ -39,7 +38,6 @@ export const pathsFromIndex = index => {
 }
 
 export const errorPrefix = 'error: '
-const prvPort = 6000
 export const prv = (command, {chainId, address, path, password}, input) => {
   const lines = []
   lines.push(`CHAINID = ${chainId}`)
@@ -49,36 +47,15 @@ export const prv = (command, {chainId, address, path, password}, input) => {
   if (password) lines.push(`KEYPASS = ${password}`)
   if (input) lines.push(`MESSAGE = ${input}`)
 
-  const arr = new Int32Array(new SharedArrayBuffer(1))
-  const nfy = () => {
-    Atomics.store(arr, 0, 1)
-    Atomics.notify(arr, 0)
-  }
-  const res = []
-  const err = []
-  const socket = createConnection(prvPort, process.env.PRV_HOST).setEncoding('utf8')
-  socket.on('data', chunk => res.push(chunk))
-  socket.on('error', error => err.push(error))
-  socket.once('end', nfy)
-  socket.once('close', hadError => {
-    if (hadError) err.push(hadError)
-    nfy()
-  })
-  for (const line of lines) {
-    socket.write(line)
-    socket.write('\n')
-  }
-  socket.end()
-  Atomics.wait(arr, 0, 0)
+  const res = spawnSync('node', ['sck.js'], {input: lines.join('\n')})
 
-  const stdout = res.join('')
-  const hasError = stdout.startsWith(errorPrefix)
-  if (err.length === 0 && !hasError)
-    return stdout.trimEnd()
+  const hasError = res.stdout.startsWith(errorPrefix)
+  if (res.stderr.length === 0 && !hasError)
+    return res.stdout.trimEnd()
   else if (hasError)
-    throw new Error(`500:${stdout.slice(errorPrefix.length)}`)
+    throw new Error(`500:${res.stdout.slice(errorPrefix.length)}`)
   else
-    throw new Error(`500:prv failed: errors ${err.join()}, stdout '${stdout}'`)
+    throw new Error(`500:prv failed: errors ${res.stderr}, stdout '${res.stdout}'`)
 }
 
 const stateDir = process.env.STATE_DIR
