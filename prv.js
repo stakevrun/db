@@ -90,7 +90,7 @@ else {
     case 'sign': {
       const messageHex = readLine('MESSAGE')
       if (!messageHex.startsWith('0x')) throw new Error('invalid message')
-      const message = Buffer.from(message.slice(2), 'hex')
+      const message = Buffer.from(messageHex.slice(2), 'hex')
       const htfEthereum = {DST: 'BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_'}
       const sig = bls12_381.sign(message, sk, htfEthereum)
       console.log(`0x${toHex(sig)}`)
