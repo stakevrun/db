@@ -29,11 +29,8 @@ ensureDirs()
 // sign:     return signature (hexstring) for MESSAGE using ADDRESS's key at KEYPATH
 
 const inputLines = []
-await new Promise(resolve =>
-  createInterface({input: process.stdin}).on(
-    'line', line => inputLines.push(line)
-  ).once('close', resolve)
-)
+for await (const line of createInterface({input: process.stdin}))
+  inputLines.push(line)
 
 const readLine = (variable) => {
   const prefix = `${variable} = `
