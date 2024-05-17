@@ -47,8 +47,12 @@ export const prv = (command, {chainId, address, path, password}, input) => {
   if (password) lines.push(`KEYPASS = ${password}`)
   if (input) lines.push(`MESSAGE = ${input}`)
 
+  const [HOST, PORT] = process.env.PRV_HOST.split(':')
+
   const res = spawnSync('node', ['sck.js'], {
-    input: lines.join('\n'), encoding: 'utf8'
+    input: lines.join('\n'),
+    encoding: 'utf8',
+    env: {HOST, PORT}
   })
 
   const hasError = res.stdout.startsWith(errorPrefix)
