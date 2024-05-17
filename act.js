@@ -21,8 +21,9 @@ async function computeVcState(vcsConfig) {
     if (chainId in vcState) throw new Error(`Duplicate chainId ${chainId}`)
     const network = chainIds[chainId]
     if (!network) throw new Error(`Unknown chainId ${chainId}`)
-    const beaconUrl = process.env[`${network.toUpperCase()}_BN`]
-    if (!beaconUrl) throw new Error(`No beacon node URL environment variable for ${chainId}`)
+    const beaconHostPort = process.env[`${network.toUpperCase()}_BN`]
+    if (!beaconHostPort) throw new Error(`No beacon node URL environment variable for ${chainId}`)
+    const beaconUrl = `http://${beaconHostPort}`
     const validatorsByPubkey = {}
     vcState[chainId] = validatorsByPubkey
     for (const {url, authToken} of vcs) {
