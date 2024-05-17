@@ -43,7 +43,7 @@ export const prv = (command, {chainId, address, path, password}, input) => {
   lines.push(`CHAINID = ${chainId}`)
   lines.push(`ADDRESS = ${address}`)
   lines.push(`COMMAND = ${command}`)
-  if (path) lines.push(`KEYPASS = ${path}`)
+  if (path) lines.push(`KEYPATH = ${path}`)
   if (password) lines.push(`KEYPASS = ${password}`)
   if (input) lines.push(`MESSAGE = ${input}`)
 
