@@ -64,7 +64,21 @@ async function computeVcState(vcsConfig) {
   return vcState
 }
 
-function computeDiscrepancies(vcState) {
+// TODO: command to fix all discrepancies
+// TODO: (optional?) command to refresh then fix all discrepancies
+// TODO: trigger full update and fix on change from srv
+
+const nullAddress = '0x'.padEnd(42, '0')
+
+async function getEffectiveFeeRecipient(rawFeeRecipient, chainId, nodeAddress, pubkey) {
+  if (rawFeeRecipient !== nullAddress)
+    return rawFeeRecipient
+
+  // TODO: fetch actual rocketpool fee recipient from fee server
+  return '0xA347C391bc8f740CAbA37672157c8aAcD08Ac567' // Holešky smoothing pool hardcoded for now
+}
+
+async function computeDiscrepancies(vcState) {
   gitCheck(['status', '--porcelain'], workDir, '', 'work directory not clean')
   const discrepancies = []
   const chainIds = readdirSync(workDir)
@@ -87,7 +101,8 @@ function computeDiscrepancies(vcState) {
         continue
       }
       const srvEnabled = reverseLogs.find(({type}) => type == 'SetEnabled')?.enabled
-      const srvFeeRecipient = reverseLogs.find(({type}) => type == 'SetFeeRecipient')?.feeRecipient
+      const rawFeeRecipient = reverseLogs.find(({type}) => type == 'SetFeeRecipient')?.feeRecipient
+      const srvFeeRecipient = await getEffectiveFeeRecipient(rawFeeRecipient, chainId, address, pubkey)
       const srvGraffiti = reverseLogs.find(({type}) => type == 'SetGraffiti')?.graffiti
       const base = {chainId, address, index, pubkey, url: validator.url}
       if (validator.enabled !== srvEnabled)
@@ -122,7 +137,7 @@ async function ensureVcState() {
 async function ensureDiscrepancies() {
   await ensureVcState()
   if (!discrepancies)
-    discrepancies = computeDiscrepancies(vcState)
+    discrepancies = await computeDiscrepancies(vcState)
 }
 
 createInterface({input: process.stdin}).on('line', async (line) => {
