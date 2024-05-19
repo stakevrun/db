@@ -64,7 +64,6 @@ async function computeVcState(vcsConfig) {
   return vcState
 }
 
-// TODO: command to fix all discrepancies
 // TODO: (optional?) command to refresh then fix all discrepancies
 // TODO: trigger full update and fix on change from srv
 
@@ -75,7 +74,7 @@ async function getEffectiveFeeRecipient(rawFeeRecipient, chainId, nodeAddress, p
     return rawFeeRecipient
 
   // TODO: fetch actual rocketpool fee recipient from fee server
-  return '0xA347C391bc8f740CAbA37672157c8aAcD08Ac567' // Holešky smoothing pool hardcoded for now
+  return '0xa347c391bc8f740caba37672157c8aacd08ac567' // Holešky smoothing pool hardcoded for now
 }
 
 async function computeDiscrepancies(vcState) {
@@ -140,6 +139,73 @@ async function ensureDiscrepancies() {
     discrepancies = await computeDiscrepancies(vcState)
 }
 
+async function fixDiscrepancy(i) {
+  const d = discrepancies[i]
+  console.log(`Fixing discrepancy ${i}: ${JSON.stringify(d)}`)
+  const headers = {
+    'Authorization': `Bearer ${authTokens.get(d.url)}`,
+    'Content-Type': 'application/json'
+  }
+  const logPrefix = `${d.chainId}:${d.pubkey}: `
+  switch (d.issue) {
+    case 'exists':
+      if (d.vc)
+        console.warn(`${logPrefix}In VC but not srv, ignoring...`)
+      else {
+        console.log(`${logPrefix}Importing keystore into VC`)
+        await ensureVcState()
+        const vcs = vcsConfig[d.chainId] || []
+        const validatorsByPubkey = vcState[d.chainId] || {}
+        const pubkeysPerUrl = {}
+        vcs.forEach(({url}) => pubkeysPerUrl[url] = 0)
+        for (const [pubkey, {url}] of Object.entries(validatorsByPubkey))
+          pubkeysPerUrl[url]++
+        const [[leastFullVC, ]] = Object.entries(pubkeysPerUrl).toSorted(([, a], [, b]) => a - b)
+        if (!leastFullVC) {
+          console.error(`No VC available, cannot import keystore`)
+          break
+        }
+        const authToken = authTokens.get(leastFullVC)
+        if (!authToken) {
+          console.error(`Auth token missing for ${leastFullVC}, cannot import keystore`)
+          break
+        }
+        headers['Authorization'] = `Bearer ${authToken}`
+        const passwordChars = []
+        for (const i of Array(randomInt(16, 49)).keys())
+          passwordChars.push(String.fromCodePoint(randomInt(33, 127)))
+        const password = passwordChars.join('')
+        const {signing: path} = pathsFromIndex(d.index)
+        const keystore = prv('keystore', {chainId: d.chainId, address: d.address, path, password})
+        const body = JSON.stringify({keystores: [keystore], passwords: [password]})
+        await checkStatus(200,
+          await fetch(`${leastFullVC}/eth/v1/keystores`,
+            {headers, method: 'POST', body}))
+      }
+      break
+    case 'enabled':
+      console.log(`${logPrefix}Setting VC enabled to ${d.srv}`)
+      await checkStatus(200,
+        await fetch(`${d.url}/lighthouse/validators/${d.pubkey}`,
+          {headers, method: 'PATCH', body: `{"enabled": ${d.srv}}`}))
+      break
+    case 'feeRecipient':
+      console.log(`${logPrefix}Changing VC feeRecipient from ${d.vc} to ${d.srv}`)
+      await checkStatus(202,
+        await fetch(`${d.url}/eth/v1/validator/${d.pubkey}/feerecipient`,
+          {headers, method: 'POST', body: `{"ethaddress": "${d.srv}"}`}))
+      break
+    case 'graffiti':
+      console.log(`${logPrefix}Changing VC graffiti from ${d.vc} to ${d.srv}`)
+      await checkStatus(202,
+        await fetch(`${d.url}/eth/v1/validator/${d.pubkey}/graffiti`,
+          {headers, method: 'POST', body: `{"graffiti": "${d.srv}"}`}))
+      break
+    default:
+      console.error(`Unknown discrepancy '${d.issue}'`)
+  }
+}
+
 createInterface({input: process.stdin}).on('line', async (line) => {
   switch (line) {
     case 'c':
@@ -162,74 +228,13 @@ createInterface({input: process.stdin}).on('line', async (line) => {
       discrepancies.forEach((x, i) => console.log(`${i}: ${JSON.stringify(x)}`))
       console.log(`End of Discrepancies`)
       break
+    case 'f':
+      await Promise.all(Array.from(discrepancies.keys()).map(fixDiscrepancy))
+      break
     default:
       const [f, i] = line.split(' ', 2)
-      if (f === 'f' && 0 <= parseInt(i) && i < discrepancies?.length) {
-        const d = discrepancies[i]
-        console.log(`Fixing discrepancy ${i}: ${JSON.stringify(d)}`)
-        const headers = {
-          'Authorization': `Bearer ${authTokens.get(d.url)}`,
-          'Content-Type': 'application/json'
-        }
-        const logPrefix = `${d.chainId}:${d.pubkey}: `
-        switch (d.issue) {
-          case 'exists':
-            if (d.vc)
-              console.warn(`${logPrefix}In VC but not srv, ignoring...`)
-            else {
-              console.log(`${logPrefix}Importing keystore into VC`)
-              await ensureVcState()
-              const vcs = vcsConfig[d.chainId] || []
-              const validatorsByPubkey = vcState[d.chainId] || {}
-              const pubkeysPerUrl = {}
-              vcs.forEach(({url}) => pubkeysPerUrl[url] = 0)
-              for (const [pubkey, {url}] of Object.entries(validatorsByPubkey))
-                pubkeysPerUrl[url]++
-              const [[leastFullVC, ]] = Object.entries(pubkeysPerUrl).toSorted(([, a], [, b]) => a - b)
-              if (!leastFullVC) {
-                console.error(`No VC available, cannot import keystore`)
-                break
-              }
-              const authToken = authTokens.get(leastFullVC)
-              if (!authToken) {
-                console.error(`Auth token missing for ${leastFullVC}, cannot import keystore`)
-                break
-              }
-              headers['Authorization'] = `Bearer ${authToken}`
-              const passwordChars = []
-              for (const i of Array(randomInt(16, 49)).keys())
-                passwordChars.push(String.fromCodePoint(randomInt(33, 127)))
-              const password = passwordChars.join('')
-              const {signing: path} = pathsFromIndex(d.index)
-              const keystore = prv('keystore', {chainId: d.chainId, address: d.address, path, password})
-              const body = JSON.stringify({keystores: [keystore], passwords: [password]})
-              await checkStatus(200,
-                await fetch(`${leastFullVC}/eth/v1/keystores`,
-                  {headers, method: 'POST', body}))
-            }
-            break
-          case 'enabled':
-            console.log(`${logPrefix}Setting VC enabled to ${d.srv}`)
-            await checkStatus(200,
-              await fetch(`${d.url}/lighthouse/validators/${d.pubkey}`,
-                {headers, method: 'PATCH', body: `{"enabled": ${d.srv}}`}))
-            break
-          case 'feeRecipient':
-            console.log(`${logPrefix}Changing VC feeRecipient from ${d.vc} to ${d.srv}`)
-            await checkStatus(202,
-              await fetch(`${d.url}/eth/v1/validator/${d.pubkey}/feerecipient`,
-                {headers, method: 'POST', body: `{"ethaddress": "${d.srv}"}`}))
-            break
-          case 'graffiti':
-            console.log(`${logPrefix}Changing VC graffiti from ${d.vc} to ${d.srv}`)
-            await checkStatus(202,
-              await fetch(`${d.url}/eth/v1/validator/${d.pubkey}/graffiti`,
-                {headers, method: 'POST', body: `{"graffiti": "${d.srv}"}`}))
-            break
-          default:
-            console.error(`Unknown discrepancy '${d.issue}'`)
-        }
-      }
+      if (f === 'f' && 0 <= parseInt(i) && i < discrepancies?.length)
+        await fixDiscrepancy(i)
       else
         console.warn(`Unknown command '${line}'`)
   }
