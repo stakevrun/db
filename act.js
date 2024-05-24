@@ -64,8 +64,7 @@ async function computeVcState(vcsConfig) {
   return vcState
 }
 
-// TODO: (optional?) command to refresh then fix all discrepancies
-// TODO: trigger full update and fix on change from srv
+// TODO: trigger full update and fix (rf) on change from srv
 
 const nullAddress = '0x'.padEnd(42, '0')
 
@@ -214,10 +213,11 @@ createInterface({input: process.stdin}).on('line', async (line) => {
       ensureVcsConfig()
     case 's':
     case 'r':
+    case 'rf':
       console.log(`Refreshing state`)
       vcState = undefined
       await ensureVcState()
-      if (line != 'r') break
+      if (!line.startsWith('r')) break
     case 'd':
       console.log(`Refreshing discrepancies`)
       discrepancies = undefined
@@ -227,7 +227,7 @@ createInterface({input: process.stdin}).on('line', async (line) => {
       console.log(`Discrepancies:`)
       discrepancies.forEach((x, i) => console.log(`${i}: ${JSON.stringify(x)}`))
       console.log(`End of Discrepancies`)
-      break
+      if (!line.endsWith('f')) break
     case 'f':
       await Promise.all(Array.from(discrepancies.keys()).map(fixDiscrepancy))
       break
