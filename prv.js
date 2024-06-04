@@ -57,7 +57,7 @@ if (command == 'generate') {
   if (existsSync(seedPath))
     console.log('exists')
   else {
-    mkdirSync(chainPath)
+    mkdirSync(chainPath, {recursive: true})
     writeFileSync(seedPath, randomSeed(), {flag: 'wx'})
     gitCheck(['add', seedPath], workDir, '', 'failed to add seed')
     gitCheck(['diff', '--staged', '--name-status'], workDir,
