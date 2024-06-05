@@ -143,30 +143,44 @@ const requiredDeclaration = 'I accept the terms of service specified at https://
 
 const typesForPUT = new Map()
 const typesForPOST = new Map()
+const typesToRefresh = new Set()
 
 typesForPUT.set('AcceptTermsOfService', 'string declaration')
+
 typesForPUT.set('CreateKey', 'uint256 index')
 
 typesForPOST.set('GetDepositData',
   'bytes pubkey,bytes32 withdrawalCredentials,uint256 amountGwei'
 )
+
 typesForPOST.set('GetPresignedExit',
   'bytes pubkey,uint256 validatorIndex,uint256 epoch'
 )
+
 typesForPOST.set('SetFeeRecipient',
   'uint256 timestamp,bytes[] pubkeys,address feeRecipient'
 )
+typesToRefresh.add('SetFeeRecipient')
+
 typesForPOST.set('SetGraffiti',
   'uint256 timestamp,bytes[] pubkeys,string graffiti'
 )
+typesToRefresh.add('SetGraffiti')
+
 typesForPOST.set('SetEnabled',
   'uint256 timestamp,bytes[] pubkeys,bool enabled'
 )
+typesToRefresh.add('SetEnabled')
+
 typesForPOST.set('AddValidators',
   'uint256 timestamp,uint256 firstIndex,' +
   'uint256 amountGwei,address feeRecipient,string graffiti,' +
   'address[] withdrawalAddresses'
 )
+typesToRefresh.add('AddValidators')
+
+const actorFifo = '/run/vrun-act.fifo'
+const refreshActor = () => writeFileSync(actorFifo, 'rf\n', {flag: 'a'})
 
 const verifyEIP712 = ({body, domainSeparator, typeMap}) => {
   if (!body) throw new Error('400:No data')
@@ -530,6 +544,7 @@ createServer((req, res) => {
             }
             else throw new Error('400:Unknown instruction')
           }
+          if (typesToRefresh.has(type)) refreshActor()
         }
         catch (e) { handler(e) }
       })
