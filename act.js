@@ -40,7 +40,7 @@ async function computeVcState(vcsConfig) {
           const res = await fetch(`${url}/eth/v1/validator/${voting_pubkey}/feerecipient`, {headers})
           if (await checkStatus(200, res)) {
             const json = await res.json()
-            validator.feerecipient = json.data.ethaddress
+            validator.feerecipient = json.data.ethaddress.toLowerCase()
           }
         }
         {
@@ -64,16 +64,14 @@ async function computeVcState(vcsConfig) {
   return vcState
 }
 
-// TODO: trigger full update and fix (rf) on change from srv
-
 const nullAddress = '0x'.padEnd(42, '0')
 
 async function getEffectiveFeeRecipient(rawFeeRecipient, chainId, nodeAddress, pubkey) {
   if (rawFeeRecipient !== nullAddress)
     return rawFeeRecipient
-
-  // TODO: fetch actual rocketpool fee recipient from fee server
-  return '0xa347c391bc8f740caba37672157c8aacd08ac567' // Holešky smoothing pool hardcoded for now
+  const res = await fetch(`https://fee.vrün.com/${chainId}/${nodeAddress}/rp-fee-recipient`)
+  // TODO: checkStatus?
+  return await res.json().then(a => a.toLowerCase())
 }
 
 async function computeDiscrepancies(vcState) {
