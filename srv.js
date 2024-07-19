@@ -13,6 +13,7 @@ ensureDirs()
 
 // srv repository database layout:
 // ${chainId}/a/${address} : JSON lines of signed acceptances of the terms of service
+// ${chainId}/c/${address} : JSON lines of CreditAccount log entries
 // ${chainId}/${address}/${pubkey} : JSON lines of log entries
 //
 // the log is an append-only record of user instructions
@@ -140,6 +141,7 @@ const normaliseData = (data, args) => {
 }
 
 const requiredDeclaration = 'I accept the terms of service specified at https://vrün.com/terms (with version identifier 20240229).'
+const adminAddresses = ['0x65FE89a480bdB998F4116DAf2A9360632554092c'].map(x => x.toLowerCase())
 
 const typesForPUT = new Map()
 const typesForPOST = new Map()
@@ -178,6 +180,11 @@ typesForPOST.set('AddValidators',
   'address[] withdrawalAddresses'
 )
 typesToRefresh.add('AddValidators')
+typesForPOST.set('CreditAccount',
+  'uint256 timestamp,address nodeAccount,'+
+  'uint256 numDays,bool decreaseBalance,' +
+  'uint256 chainId,bytes32 transactionHash,string reason'
+)
 
 const actorFifo = '/run/vrun-act.fifo'
 const refreshActor = () => writeFileSync(actorFifo, 'rf\n', {flag: 'a'})
@@ -382,10 +389,12 @@ createServer((req, res) => {
       }
     }
     else if (['PUT', 'POST'].includes(req.method)) {
-      const [, chainId, address, index] = pathname.split('/')
+      const pathParts = pathname.split('/')
+      if (pathParts.length !== (req.method == 'PUT' ? 3 : 4)) throw new Error('404:Unknown route')
+      const [, chainId, address, index] = pathParts
       if (!domainSeparators.has(chainId)) throw new Error('404:Unknown chainId')
       if (!addressRegExp.test(address)) throw new Error('404:Invalid address')
-      if (typeof index == 'string' && !numberRegExp.test(index) && index !== 'batch') throw new Error('404:Invalid index')
+      if (typeof index == 'string' && !numberRegExp.test(index) && index !== 'batch' && index !== 'credit') throw new Error('404:Invalid index')
       const [contentType, charset] = req.headers['content-type']?.split(';') || []
       if (contentType !== 'application/json')
         throw new Error('415:Accepts application/json only')
@@ -399,15 +408,20 @@ createServer((req, res) => {
           const typeMap = req.method == 'PUT' ? typesForPUT : typesForPOST
           const domainSeparator = domainSeparators.get(chainId)
           const {type, data, address: sigAddress, signature, indices} = verifyEIP712({domainSeparator, body, typeMap})
-          if (sigAddress !== address) throw new Error(`400:Address mismatch: ${sigAddress}`)
+          if ((index === 'credit') !== (type === 'CreditAccount')) throw new Error(`400:Credit route type mismatch`)
+          const validSigAddresses = index === 'credit' ? adminAddresses : [address]
+          if (!validSigAddresses.includes(sigAddress)) throw new Error(`400:Address mismatch: ${sigAddress}`)
           if (index === 'batch' && (!data.pubkeys || !indices || data.pubkeys.length !== indices.length))
             throw new Error(`400:Invalid indices/pubkeys`)
           const addressPath = `${workDir}/${chainId}/${address}`
           const acceptanceDir = `${workDir}/${chainId}/a`
           const acceptancePath = `${acceptanceDir}/${address}`
           const acceptanceExists = existsSync(acceptancePath)
+          const creditDir = `${workDir}/${chainId}/c`
+          const creditPath = `${creditDir}/${address}`
           const {declaration: currentDeclaration} = acceptanceExists && readJSONL(acceptancePath).at(-1)
-          if (currentDeclaration !== requiredDeclaration && type != 'AcceptTermsOfService')
+          if (currentDeclaration !== requiredDeclaration &&
+              !(['AcceptTermsOfService', 'CreditAccount'].includes(type)))
             throw new Error('400:Acceptance of terms of service missing')
           if (type == 'AddValidators') {
             const firstIndex = parseInt(data.firstIndex)
@@ -480,6 +494,17 @@ createServer((req, res) => {
             }
             const statusCode = existing ? 200 : 201
             finish(statusCode, '')
+          }
+          else if (type == 'CreditAccount') {
+            const existing = existsSync(creditPath)
+            if (!existing) mkdirSync(creditDir, {recursive: true})
+            const logs = existing ? readJSONL(creditPath) : []
+            const lastLog = logs.at(-1)
+            if (lastLog && !(parseInt(lastLog.timestamp) <= parseInt(data.timestamp))) throw new Error(`400:Timestamp too early for ${address}`)
+            if (!(parseInt(data.timestamp) <= (Date.now() / 1000))) throw new Error(`400:Timestamp in the future for ${address}`)
+            const log = {...data, signature}
+            addLogLine(creditPath, log)
+            finish(201, '')
           }
           else if (type == 'CreateKey') {
             const index = parseInt(data.index)
