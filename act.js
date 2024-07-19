@@ -88,7 +88,7 @@ async function computeDiscrepancies(vcState) {
     const pubkeysWithAddresses = readdirSync(chainDir, {recursive: true})
     for (const pubkeyWithAddress of pubkeysWithAddresses) {
       const [address, pubkey] = pubkeyWithAddress.split('/')
-      if (address == 'a' || !pubkey) continue
+      if (address == 'a' || address == 'c' || !pubkey) continue
       srvPubkeys.push(pubkey)
       const logPath = `${chainDir}/${pubkeyWithAddress}`
       const reverseLogs = readJSONL(logPath).toReversed()
