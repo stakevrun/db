@@ -30,11 +30,22 @@ Returns: `[<log>...]` - log entries whose type matches `type` (all if omitted),
 with `start` and `end` interpreted as in `Array.prototype.slice`, with the
 earliest matching logs first.
 
+- `GET /<chainId>/<address>/credit/length`
+Returns: number - the number of log entries for `address` whose type is
+`CreditAccount`.
+
+- `GET /<chainId>/<address>/credit/logs?hash&reason&start&end`
+Returns: `[<log>...]` - `CreditAccount` log entries whose `transactionHash`and
+`reason` match `hash` (exact) and `reason` (regular expression) (all if
+omitted), with `start` and `end` interpreted as in `Array.prototype.slice`,
+with the earliest matching logs first.
+
 ## PUT/POST requests
 
 - `PUT /<chainId>/<address>`
 - `POST /<chainId>/<address>/<index>`
 - `POST /<chainId>/<address>/batch`
+- `POST /<chainId>/<address>/credit`
 
 The body content-type should be `application/json`.
 
@@ -57,6 +68,10 @@ The `batch` route (with `indices` included in the body) is used exactly when
 the data object has a `pubkeys` component, and the indices should correspond to
 the `pubkeys` if so. Otherwise the `index` in the route should correspond to the
 `pubkey` (if any) in the data object.
+
+The `credit` route is used exactly when the type is `CreditAccount`. In this
+case, the `nodeAccount` in the data should match the `address` in the route,
+and the signature must be from a Vrün administrator account.
 
 ```
 struct AcceptTermsOfService {
@@ -104,6 +119,16 @@ struct AddValidators {
   address feeRecipient;
   string graffiti;
   address[] withdrawalAddresses;
+}
+
+struct CreditAccount {
+  uint256 timestamp;
+  address nodeAccount;
+  uint256 numDays;
+  bool decreaseBalance;
+  uint256 chainId;
+  bytes32 transactionHash;
+  string reason;
 }
 ```
 
