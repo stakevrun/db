@@ -66,7 +66,7 @@ async function computeVcState(vcsConfig) {
 
 const nullAddress = '0x'.padEnd(42, '0')
 
-async function getEffectiveFeeRecipient(rawFeeRecipient, chainId, nodeAddress, pubkey) {
+async function getEffectiveFeeRecipient(rawFeeRecipient, chainId, nodeAddress) {
   if (rawFeeRecipient !== nullAddress)
     return rawFeeRecipient
   const res = await fetch(`https://fee.vrün.com/${chainId}/${nodeAddress}/rp-fee-recipient`)
@@ -98,7 +98,7 @@ async function computeDiscrepancies(vcState) {
       }
       const srvEnabled = reverseLogs.find(({type}) => type == 'SetEnabled')?.enabled
       const rawFeeRecipient = reverseLogs.find(({type}) => type == 'SetFeeRecipient')?.feeRecipient
-      const srvFeeRecipient = await getEffectiveFeeRecipient(rawFeeRecipient, chainId, address, pubkey)
+      const srvFeeRecipient = await getEffectiveFeeRecipient(rawFeeRecipient, chainId, address)
       const srvGraffiti = reverseLogs.find(({type}) => type == 'SetGraffiti')?.graffiti
       const base = {chainId, address, index, pubkey, url: validator.url}
       if (validator.enabled !== srvEnabled)
