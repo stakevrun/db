@@ -26,14 +26,13 @@ ensureDirs()
 // then we attempt to follow the instruction (except PUT requests are attempted
 // before the response)
 
-const pubkeyRe = i => `(?<pubkey${i}>0x[0-9a-f]{96})`
+const pubkeyRe = `0x[0-9a-f]{96}`
 const routesRegExp = new RegExp(`^/` +
   `(?<chainId>[0-9]+)/` +
   `(?<address>${addressRe})/(?:` +
     `(?<i0>nextindex)|` +
     `(?<i1>pubkey)/(?<index>[0-9]+)|` +
-    `${pubkeyRe(2)}/(?<i2>length)|` +
-    `${pubkeyRe(3)}/(?<i3>logs)|` +
+    `(?<i2>(?:${pubkeyRe})|(?:credit))/(?<i3>(?:length)|(?:logs))|` +
     `(?<i4>acceptance)` +
   `)$`
 )
@@ -347,6 +346,7 @@ createServer((req, res) => {
       if (!chain) throw new Error('404:Unknown chainId')
       const address = match.groups.address
       const addressPath = `${workDir}/${chainId}/${address}`
+      const creditPath = `${workDir}/${chainId}/c/${address}`
       if (match.groups.i0 == 'nextindex') {
         finish(200, (+getNextIndex(addressPath)).toString())
       }
@@ -366,15 +366,19 @@ createServer((req, res) => {
         finish(200, JSON.stringify(pubkey))
       }
       else {
-        if (!existsSync(addressPath)) throw new Error('404:Unknown address')
-        const pubkey = [2, 3].map(i => match.groups[`pubkey${i}`]).find(x => x)
-        const logPath = `${addressPath}/${pubkey}`
-        if (!existsSync(logPath)) throw new Error('404:Unknown pubkey')
+        const creditRoute = match.groups.i2 == 'credit'
+        const logPath = creditRoute ? creditPath : `${addressPath}/${match.groups.i2}`
+        if (!existsSync(logPath)) throw new Error('404:Unknown address or pubkey')
         const unfiltered = readJSONL(logPath)
-        const type = url.searchParams.get('type')
-        const test = type && new RegExp(type, 'i')
-        const logs = type ? unfiltered.flatMap(x => test.test(x.type) ? [x] : []) : unfiltered
-        if (match.groups.i2 == 'length') {
+        const makeRe = x => new RegExp(url.searchParams.get(x) || '', 'i')
+        const typeRe = makeRe('type')
+        const reasonRe = makeRe('reason')
+        const hash = url.searchParams.get('hash')?.toLowerCase()
+        const filter = creditRoute ?
+          x => reasonRe.test(x.reason) && (!hash || x.transactionHash === hash) :
+          x => typeRe.test(x.type)
+        const logs = unfiltered.filter(filter)
+        if (match.groups.i3 == 'length') {
           finish(200, logs.length.toString())
         }
         else if (match.groups.i3 == 'logs') {
@@ -469,7 +473,7 @@ createServer((req, res) => {
               writeFileSync(logPath, logs.map(log => `${JSON.stringify(log)}\n`).join(''), {flag: 'a'})
               gitCheck(['add', logPath], workDir, '', `failed to add logs`)
             }
-            const lineRegExp = new RegExp(`[45]\\s+0\\s+${chainId}/${address}/${pubkeyRe('')}`)
+            const lineRegExp = new RegExp(`[45]\\s+0\\s+${chainId}/${address}/(?<pubkey>${pubkeyRe})`)
             gitCheck(['diff', '--staged', '--numstat'], workDir,
               output => {
                 const lines = output.trimEnd().split('\n')
