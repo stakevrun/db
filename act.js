@@ -74,6 +74,8 @@ async function getEffectiveFeeRecipient(rawFeeRecipient, chainId, nodeAddress) {
   return await res.json().then(a => a.toLowerCase())
 }
 
+const exitedStatuses = ['exited_unslashed', 'exited_slashed', 'withdrawal_possible', 'withdrawal_done']
+
 async function computeDiscrepancies(vcState) {
   gitCheck(['status', '--porcelain'], workDir, '', 'work directory not clean')
   const discrepancies = []
@@ -96,6 +98,7 @@ async function computeDiscrepancies(vcState) {
         discrepancies.push({chainId, address, index, pubkey, issue: 'exists', srv: true, vc: false})
         continue
       }
+      if (exitedStatuses.includes(validator.status)) continue
       const srvEnabled = reverseLogs.find(({type}) => type == 'SetEnabled')?.enabled
       const rawFeeRecipient = reverseLogs.find(({type}) => type == 'SetFeeRecipient')?.feeRecipient
       const srvFeeRecipient = await getEffectiveFeeRecipient(rawFeeRecipient, chainId, address)
