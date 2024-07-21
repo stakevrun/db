@@ -196,7 +196,7 @@ async function fixDiscrepancy(i) {
       console.log(`${logPrefix}Changing VC graffiti from ${d.vc} to ${d.srv}`)
       await checkStatus(202,
         await fetch(`${d.url}/eth/v1/validator/${d.pubkey}/graffiti`,
-          {headers, method: 'POST', body: `{"graffiti": "${d.srv}"}`}))
+          {headers, method: 'POST', body: JSON.stringify({graffiti: d.srv})}))
       break
     default:
       console.error(`Unknown discrepancy '${d.issue}'`)
