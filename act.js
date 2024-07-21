@@ -12,7 +12,7 @@ const checkStatus = async (desired, res) => {
   return correct
 }
 
-const hexDigitsRegExp = /^0x(?<content>[0-9a-f]*?)0*$/
+const hexDigitsRegExp = /^0x(?<content>(?:[0-9a-f][0-9a-f])*?)0*$/
 
 // {chainId: {pubkey: {url, enabled, feerecipient, graffiti, status}, ...}, ...}
 async function computeVcState(vcsConfig) {
