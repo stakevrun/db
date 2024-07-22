@@ -27,14 +27,15 @@ ensureDirs()
 // before the response)
 
 const pubkeyRe = `0x[0-9a-f]{96}`
-const routesRegExp = new RegExp(`^/` +
+const routesRegExp = new RegExp(`^/(?:` +
+  `(?<admins>admins)|(?:` +
   `(?<chainId>[0-9]+)/` +
-  `(?<address>${addressRe})/(?:` +
-    `(?<i0>nextindex)|` +
-    `(?<i1>pubkey)/(?<index>[0-9]+)|` +
-    `(?<i2>(?:${pubkeyRe})|(?:credit))/(?<i3>(?:length)|(?:logs))|` +
-    `(?<i4>acceptance)` +
-  `)$`
+    `(?<address>${addressRe})/(?:` +
+      `(?<nextindex>nextindex)|` +
+      `(?<pubkey>pubkey)/(?<index>[0-9]+)|` +
+      `(?<creditOrPubkey>(?:${pubkeyRe})|(?:credit))/(?<lengthOrLogs>(?:length)|(?:logs))|` +
+      `(?<acceptance>acceptance)` +
+  `)))$`
 )
 
 const getNextIndex = addressPath =>
@@ -140,7 +141,10 @@ const normaliseData = (data, args) => {
 }
 
 const requiredDeclaration = 'I accept the terms of service specified at https://vrün.com/terms (with version identifier 20240229).'
-const adminAddresses = ['0x65FE89a480bdB998F4116DAf2A9360632554092c'].map(x => x.toLowerCase())
+const adminAddresses = [
+  '0xB0De8cB8Dcc8c5382c4b7F3E978b491140B2bC55', // gov.ramana.eth
+  '0x0c39fC9A61AE74281ec06640bd2065E11751910A', // vrün fee server signer
+].map(x => x.toLowerCase())
 
 const typesForPUT = new Map()
 const typesForPOST = new Map()
@@ -341,22 +345,24 @@ createServer((req, res) => {
     if (['GET', 'HEAD'].includes(req.method)) {
       const match = routesRegExp.exec(pathname)
       if (!match) throw new Error('404:Unknown route')
+      if (match.groups.admins == 'admins')
+        return finish(200, JSON.stringify(adminAddresses))
       const chainId = parseInt(match.groups.chainId)
       const chain = chainIds[chainId]
       if (!chain) throw new Error('404:Unknown chainId')
       const address = match.groups.address
       const addressPath = `${workDir}/${chainId}/${address}`
       const creditPath = `${workDir}/${chainId}/c/${address}`
-      if (match.groups.i0 == 'nextindex') {
+      if (match.groups.nextindex == 'nextindex') {
         finish(200, (+getNextIndex(addressPath)).toString())
       }
-      else if (match.groups.i4 == 'acceptance') {
+      else if (match.groups.acceptance == 'acceptance') {
         const acceptancePath = `${workDir}/${chainId}/a/${address}`
         if (!existsSync(acceptancePath)) throw new Error(`404:Acceptance missing`)
         const {timestamp, declaration, signature} = readJSONL(acceptancePath).at(-1)
         finish(200, JSON.stringify({timestamp, declaration, signature}))
       }
-      else if (match.groups.i1 == 'pubkey') {
+      else if (match.groups.pubkey == 'pubkey') {
         if (!existsSync(addressPath)) throw new Error('404:Unknown address')
         const index = parseInt(match.groups.index)
         if (!(0 <= index)) throw new Error('400:Invalid index')
@@ -366,8 +372,8 @@ createServer((req, res) => {
         finish(200, JSON.stringify(pubkey))
       }
       else {
-        const creditRoute = match.groups.i2 == 'credit'
-        const logPath = creditRoute ? creditPath : `${addressPath}/${match.groups.i2}`
+        const creditRoute = match.groups.creditOrPubkey == 'credit'
+        const logPath = creditRoute ? creditPath : `${addressPath}/${match.groups.creditOrPubkey}`
         if (!existsSync(logPath)) throw new Error('404:Unknown address or pubkey')
         const unfiltered = readJSONL(logPath)
         const makeRe = x => new RegExp(url.searchParams.get(x) || '', 'i')
@@ -378,10 +384,10 @@ createServer((req, res) => {
           x => reasonRe.test(x.reason) && (!hash || x.transactionHash === hash) :
           x => typeRe.test(x.type)
         const logs = unfiltered.filter(filter)
-        if (match.groups.i3 == 'length') {
+        if (match.groups.lengthOrLogs == 'length') {
           finish(200, logs.length.toString())
         }
-        else if (match.groups.i3 == 'logs') {
+        else if (match.groups.lengthOrLogs == 'logs') {
           const start = url.searchParams.get('start')
           const endInt = parseInt(url.searchParams.get('end'))
           const end = Number.isNaN(endInt) ? logs.length : endInt

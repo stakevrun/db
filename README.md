@@ -40,6 +40,9 @@ Returns: `[<log>...]` - `CreditAccount` log entries whose `transactionHash`and
 omitted), with `start` and `end` interpreted as in `Array.prototype.slice`,
 with the earliest matching logs first.
 
+- `GET /admins`
+Returns: `[<address>...]` - list of Vrün administrator addresses.
+
 ## PUT/POST requests
 
 - `PUT /<chainId>/<address>`
