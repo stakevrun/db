@@ -14,6 +14,8 @@ const checkStatus = async (desired, res, path) => {
 
 const hexDigitsRegExp = /^0x(?<content>(?:[0-9a-f][0-9a-f])*?)0*$/
 
+const exitedStatuses = ['exited_unslashed', 'exited_slashed', 'withdrawal_possible', 'withdrawal_done']
+
 // {chainId: {pubkey: {url, enabled, feerecipient, graffiti, status}, ...}, ...}
 async function computeVcState(vcsConfig) {
   const vcState = {}
@@ -37,6 +39,15 @@ async function computeVcState(vcsConfig) {
         const validator = {url, enabled}
         validatorsByPubkey[voting_pubkey] = validator
         {
+          const path = `${beaconUrl}/eth/v1/beacon/states/finalized/validators/${voting_pubkey}`
+          const res = await fetch(path)
+          if (await checkStatus(200, res, path)) {
+            const json = await res.json()
+            validator.status = json.data.status
+          }
+        }
+        if (exitedStatuses.includes(validator.status)) continue
+        {
           const path = `${url}/eth/v1/validator/${voting_pubkey}/feerecipient`
           const res = await fetch(path, {headers})
           if (await checkStatus(200, res, path)) {
@@ -51,14 +62,6 @@ async function computeVcState(vcsConfig) {
             const json = await res.json()
             const graffitiHex = hexDigitsRegExp.exec(json.data.graffiti)?.groups.content || ''
             validator.graffiti = Buffer.from(graffitiHex, 'hex').toString()
-          }
-        }
-        {
-          const path = `${beaconUrl}/eth/v1/beacon/states/finalized/validators/${voting_pubkey}`
-          const res = await fetch(path)
-          if (await checkStatus(200, res, path)) {
-            const json = await res.json()
-            validator.status = json.data.status
           }
         }
       }
@@ -76,8 +79,6 @@ async function getEffectiveFeeRecipient(rawFeeRecipient, chainId, nodeAddress) {
   // TODO: checkStatus?
   return await res.json().then(a => a.toLowerCase())
 }
-
-const exitedStatuses = ['exited_unslashed', 'exited_slashed', 'withdrawal_possible', 'withdrawal_done']
 
 async function computeDiscrepancies(vcState) {
   gitCheck(['status', '--porcelain'], workDir, '', 'work directory not clean')
