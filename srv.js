@@ -183,6 +183,7 @@ typesForPOST.set('AddValidators',
   'address[] withdrawalAddresses'
 )
 typesToRefresh.add('AddValidators')
+
 typesForPOST.set('CreditAccount',
   'uint256 timestamp,address nodeAccount,'+
   'uint256 numDays,bool decreaseBalance,' +
@@ -404,7 +405,7 @@ createServer((req, res) => {
       const [, chainId, address, index] = pathParts
       if (!domainSeparators.has(chainId)) throw new Error('404:Unknown chainId')
       if (!addressRegExp.test(address)) throw new Error('404:Invalid address')
-      if (typeof index == 'string' && !numberRegExp.test(index) && index !== 'batch' && index !== 'credit') throw new Error('404:Invalid index')
+      if (typeof index !== 'undefined' && !numberRegExp.test(index) && index !== 'batch' && index !== 'credit') throw new Error('404:Invalid index')
       const [contentType, charset] = req.headers['content-type']?.split(';') || []
       if (contentType !== 'application/json')
         throw new Error('415:Accepts application/json only')
