@@ -14,7 +14,8 @@ const checkStatus = async (desired, res, path) => {
 
 const hexDigitsRegExp = /^0x(?<content>(?:[0-9a-f][0-9a-f])*?)0*$/
 
-const exitedStatuses = ['exited_unslashed', 'exited_slashed', 'withdrawal_possible', 'withdrawal_done']
+const exitedStatuses = ['exited_unslashed', 'exited_slashed', 'withdrawal_possible', 'withdrawal_done',
+                        'unknown' /* special status when missing from beacon chain */]
 
 // {chainId: {pubkey: {url, enabled, feerecipient, graffiti, status}, ...}, ...}
 async function computeVcState(vcsConfig) {
@@ -41,7 +42,9 @@ async function computeVcState(vcsConfig) {
         {
           const path = `${beaconUrl}/eth/v1/beacon/states/finalized/validators/${voting_pubkey}`
           const res = await fetch(path)
-          if (await checkStatus(200, res, path)) {
+          if (res.status === 404)
+            validator.status = 'unknown'
+          else if (await checkStatus(200, res, path)) {
             const json = await res.json()
             validator.status = json.data.status
           }
