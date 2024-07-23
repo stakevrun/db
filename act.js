@@ -5,10 +5,10 @@ import { randomInt } from 'node:crypto'
 
 const authTokens = new Map()
 
-const checkStatus = async (desired, res) => {
+const checkStatus = async (desired, res, path) => {
   const correct = res.status === desired
   if (!correct)
-    console.error(`Request failed, ${res.status} ${res.statusText}: ${JSON.stringify(await res.json())}`)
+    console.error(`Request failed for ${path}: ${res.status} ${res.statusText}: ${JSON.stringify(await res.json())}`)
   return correct
 }
 
@@ -37,23 +37,26 @@ async function computeVcState(vcsConfig) {
         const validator = {url, enabled}
         validatorsByPubkey[voting_pubkey] = validator
         {
-          const res = await fetch(`${url}/eth/v1/validator/${voting_pubkey}/feerecipient`, {headers})
-          if (await checkStatus(200, res)) {
+          const path = `${url}/eth/v1/validator/${voting_pubkey}/feerecipient`
+          const res = await fetch(path, {headers})
+          if (await checkStatus(200, res, path)) {
             const json = await res.json()
             validator.feerecipient = json.data.ethaddress.toLowerCase()
           }
         }
         {
-          const res = await fetch(`${url}/eth/v1/validator/${voting_pubkey}/graffiti`, {headers})
-          if (await checkStatus(200, res)) {
+          const path = `${url}/eth/v1/validator/${voting_pubkey}/graffiti`
+          const res = await fetch(path, {headers})
+          if (await checkStatus(200, res, path)) {
             const json = await res.json()
             const graffitiHex = hexDigitsRegExp.exec(json.data.graffiti)?.groups.content || ''
             validator.graffiti = Buffer.from(graffitiHex, 'hex').toString()
           }
         }
         {
-          const res = await fetch(`${beaconUrl}/eth/v1/beacon/states/finalized/validators/${voting_pubkey}`)
-          if (await checkStatus(200, res)) {
+          const path = `${beaconUrl}/eth/v1/beacon/states/finalized/validators/${voting_pubkey}`
+          const res = await fetch(path)
+          if (await checkStatus(200, res, path)) {
             const json = await res.json()
             validator.status = json.data.status
           }
@@ -178,29 +181,39 @@ async function fixDiscrepancy(i) {
         const {signing: path} = pathsFromIndex(d.index)
         const keystore = prv('keystore', {chainId: d.chainId, address: d.address, path, password})
         const body = JSON.stringify({keystores: [keystore], passwords: [password]})
+        const path = `${leastFullVC}/eth/v1/keystores`
         await checkStatus(200,
-          await fetch(`${leastFullVC}/eth/v1/keystores`,
-            {headers, method: 'POST', body}))
+          await fetch(path, {headers, method: 'POST', body}),
+          path)
       }
       break
-    case 'enabled':
+    case 'enabled': {
       console.log(`${logPrefix}Setting VC enabled to ${d.srv}`)
+      const path = `${d.url}/lighthouse/validators/${d.pubkey}`
       await checkStatus(200,
-        await fetch(`${d.url}/lighthouse/validators/${d.pubkey}`,
-          {headers, method: 'PATCH', body: `{"enabled": ${d.srv}}`}))
+        await fetch(path,
+          {headers, method: 'PATCH', body: `{"enabled": ${d.srv}}`}),
+        path)
       break
-    case 'feeRecipient':
+    }
+    case 'feeRecipient': {
       console.log(`${logPrefix}Changing VC feeRecipient from ${d.vc} to ${d.srv}`)
+      const path = `${d.url}/eth/v1/validator/${d.pubkey}/feerecipient`
       await checkStatus(202,
-        await fetch(`${d.url}/eth/v1/validator/${d.pubkey}/feerecipient`,
-          {headers, method: 'POST', body: `{"ethaddress": "${d.srv}"}`}))
+        await fetch(path,
+          {headers, method: 'POST', body: `{"ethaddress": "${d.srv}"}`}),
+        path)
       break
-    case 'graffiti':
+    }
+    case 'graffiti': {
       console.log(`${logPrefix}Changing VC graffiti from ${d.vc} to ${d.srv}`)
+      const path = `${d.url}/eth/v1/validator/${d.pubkey}/graffiti`
       await checkStatus(202,
-        await fetch(`${d.url}/eth/v1/validator/${d.pubkey}/graffiti`,
-          {headers, method: 'POST', body: JSON.stringify({graffiti: d.srv})}))
+        await fetch(path,
+          {headers, method: 'POST', body: JSON.stringify({graffiti: d.srv})}),
+        path)
       break
+    }
     default:
       console.error(`Unknown discrepancy '${d.issue}'`)
   }
