@@ -181,10 +181,10 @@ async function fixDiscrepancy(i) {
         const {signing: path} = pathsFromIndex(d.index)
         const keystore = prv('keystore', {chainId: d.chainId, address: d.address, path, password})
         const body = JSON.stringify({keystores: [keystore], passwords: [password]})
-        const path = `${leastFullVC}/eth/v1/keystores`
+        const url = `${leastFullVC}/eth/v1/keystores`
         await checkStatus(200,
-          await fetch(path, {headers, method: 'POST', body}),
-          path)
+          await fetch(url, {headers, method: 'POST', body}),
+          url)
       }
       break
     case 'enabled': {
