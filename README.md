@@ -129,7 +129,8 @@ struct CreditAccount {
   address nodeAccount;
   uint256 numDays;
   bool decreaseBalance;
-  uint256 chainId;
+  uint256 tokenChainId;
+  address tokenAddress;
   bytes32 transactionHash;
   string reason;
 }

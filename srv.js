@@ -187,7 +187,8 @@ typesToRefresh.add('AddValidators')
 typesForPOST.set('CreditAccount',
   'uint256 timestamp,address nodeAccount,'+
   'uint256 numDays,bool decreaseBalance,' +
-  'uint256 chainId,bytes32 transactionHash,string reason'
+  'uint256 tokenChainId,address tokenAddress,' +
+  'bytes32 transactionHash,string reason'
 )
 
 const actorFifo = '/run/vrun-act.fifo'
