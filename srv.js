@@ -306,12 +306,10 @@ const computePresignedExit = ({validatorIndex, epoch, chainId, address, path}) =
   return {signature, message: {epoch, validator_index: validatorIndex}}
 }
 
-const allowedMethods = 'GET,HEAD,OPTIONS,POST,PUT'
+const allowedMethods = 'GET,POST,PUT'
 
 createServer((req, res) => {
-  const resHeaders = {
-    'Access-Control-Allow-Origin': '*'
-  }
+  const resHeaders = { }
   function handler(e) {
     let [code, body] = e.message.split(':', 2)
     if (body) body += e.message.slice(code.length + 1 + body.length)
@@ -326,7 +324,7 @@ createServer((req, res) => {
         resHeaders['Content-Type'] = 'text/plain'
         resHeaders['Content-Length'] = Buffer.byteLength(body)
         res.writeHead(statusCode, resHeaders)
-        res.method == 'HEAD' ? res.end() : res.end(body)
+        res.end(body)
       }
     }
     else {
@@ -337,14 +335,14 @@ createServer((req, res) => {
   function finish(statusCode, body) {
     resHeaders['Content-Length'] = Buffer.byteLength(body)
     res.writeHead(statusCode, resHeaders)
-    req.method == 'HEAD' ? res.end() : res.end(body)
+    res.end(body)
     console.log(`${req.method} ${req.url} -> ${statusCode}: ${body}`)
   }
   try {
     resHeaders['Content-Type'] = 'application/json'
     const url = new URL(req.url, `http://${req.headers.host}`)
     const pathname = url.pathname.toLowerCase()
-    if (['GET', 'HEAD'].includes(req.method)) {
+    if (['GET'].includes(req.method)) {
       const match = routesRegExp.exec(pathname)
       if (!match) throw new Error('404:Unknown route')
       if (match.groups.admins == 'admins')
@@ -585,12 +583,6 @@ createServer((req, res) => {
         }
         catch (e) { handler(e) }
       })
-    }
-    else if (req.method == 'OPTIONS') {
-      resHeaders['Content-Length'] = 0
-      resHeaders['Access-Control-Allow-Methods'] = allowedMethods
-      resHeaders['Access-Control-Allow-Headers'] = '*'
-      res.writeHead(204, resHeaders).end()
     }
     else
       throw new Error('405')
