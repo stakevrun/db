@@ -163,24 +163,24 @@ typesForPOST.set('GetPresignedExit',
 )
 
 typesForPOST.set('SetFeeRecipient',
-  'uint256 timestamp,bytes[] pubkeys,address feeRecipient'
+  'uint256 timestamp,bytes[] pubkeys,address feeRecipient,string comment'
 )
 typesToRefresh.add('SetFeeRecipient')
 
 typesForPOST.set('SetGraffiti',
-  'uint256 timestamp,bytes[] pubkeys,string graffiti'
+  'uint256 timestamp,bytes[] pubkeys,string graffiti,string comment'
 )
 typesToRefresh.add('SetGraffiti')
 
 typesForPOST.set('SetEnabled',
-  'uint256 timestamp,bytes[] pubkeys,bool enabled'
+  'uint256 timestamp,bytes[] pubkeys,bool enabled,string comment'
 )
 typesToRefresh.add('SetEnabled')
 
 typesForPOST.set('AddValidators',
   'uint256 timestamp,uint256 firstIndex,' +
   'uint256 amountGwei,address feeRecipient,string graffiti,' +
-  'address[] withdrawalAddresses'
+  'address[] withdrawalAddresses,string comment'
 )
 typesToRefresh.add('AddValidators')
 
@@ -188,7 +188,7 @@ typesForPOST.set('CreditAccount',
   'uint256 timestamp,address nodeAccount,'+
   'uint256 numDays,bool decreaseBalance,' +
   'uint256 tokenChainId,address tokenAddress,' +
-  'bytes32 transactionHash,string reason'
+  'bytes32 transactionHash,string comment'
 )
 
 const actorFifo = '/run/vrun-act.fifo'
@@ -378,10 +378,10 @@ createServer((req, res) => {
         const unfiltered = readJSONL(logPath)
         const makeRe = x => new RegExp(url.searchParams.get(x) || '', 'i')
         const typeRe = makeRe('type')
-        const reasonRe = makeRe('reason')
+        const commentRe = makeRe('comment')
         const hash = url.searchParams.get('hash')?.toLowerCase()
         const filter = creditRoute ?
-          x => reasonRe.test(x.reason) && (!hash || x.transactionHash === hash) :
+          x => commentRe.test(x.comment) && (!hash || x.transactionHash === hash) :
           x => typeRe.test(x.type)
         const logs = unfiltered.filter(filter)
         if (match.groups.lengthOrLogs == 'length') {

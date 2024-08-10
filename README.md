@@ -34,9 +34,9 @@ earliest matching logs first.
 Returns: number - the number of log entries for `address` whose type is
 `CreditAccount`.
 
-- `GET /<chainId>/<address>/credit/logs?hash&reason&start&end`
+- `GET /<chainId>/<address>/credit/logs?hash&comment&start&end`
 Returns: `[<log>...]` - `CreditAccount` log entries whose `transactionHash`and
-`reason` match `hash` (exact) and `reason` (regular expression) (all if
+`comment` match `hash` (exact) and `comment` (regular expression) (all if
 omitted), with `start` and `end` interpreted as in `Array.prototype.slice`,
 with the earliest matching logs first.
 
@@ -101,18 +101,21 @@ struct SetFeeRecipient {
   uint256 timestamp;
   bytes[] pubkeys;
   address feeRecipient;
+  string comment;
 }
 
 struct SetGraffiti {
   uint256 timestamp;
   bytes[] pubkeys;
   string graffiti;
+  string comment;
 }
 
 struct SetEnabled {
   uint256 timestamp;
   bytes[] pubkeys;
   bool enabled;
+  string comment;
 }
 
 struct AddValidators {
@@ -122,6 +125,7 @@ struct AddValidators {
   address feeRecipient;
   string graffiti;
   address[] withdrawalAddresses;
+  string comment;
 }
 
 struct CreditAccount {
@@ -132,7 +136,7 @@ struct CreditAccount {
   uint256 tokenChainId;
   address tokenAddress;
   bytes32 transactionHash;
-  string reason;
+  string comment;
 }
 ```
 
