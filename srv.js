@@ -357,28 +357,28 @@ createServer((req, res) => {
     if (['GET'].includes(req.method)) {
       const match = routesRegExp.exec(pathname)
       if (!match) throw new Error('404:Unknown route')
-      if (match.groups.admins == 'admins')
+      if (match.groups.admins === 'admins')
         return finish(200, JSON.stringify(adminAddresses))
-      if (match.groups.declaration == 'declaration')
+      if (match.groups.declaration === 'declaration')
         return finish(200, JSON.stringify(requiredDeclaration))
       const chainId = parseInt(match.groups.chainId)
       const chain = chainIds[chainId]
       if (!chain) throw new Error('404:Unknown chainId')
-      if (match.groups.types == 'types')
+      if (match.groups.types === 'types')
         return finish(200, JSON.stringify({types, domain: eip712Domain(chainId)}))
       const address = match.groups.address
       const addressPath = `${workDir}/${chainId}/${address}`
       const creditPath = `${workDir}/${chainId}/c/${address}`
-      if (match.groups.nextindex == 'nextindex') {
+      if (match.groups.nextindex === 'nextindex') {
         finish(200, (+getNextIndex(addressPath)).toString())
       }
-      else if (match.groups.acceptance == 'acceptance') {
+      else if (match.groups.acceptance === 'acceptance') {
         const acceptancePath = `${workDir}/${chainId}/a/${address}`
         if (!existsSync(acceptancePath)) throw new Error(`404:Acceptance missing`)
         const {timestamp, declaration, signature} = readJSONL(acceptancePath).at(-1)
         finish(200, JSON.stringify({timestamp, declaration, signature}))
       }
-      else if (match.groups.pubkey == 'pubkey') {
+      else if (match.groups.pubkey === 'pubkey') {
         if (!existsSync(addressPath)) throw new Error('404:Unknown address')
         const index = parseInt(match.groups.index)
         if (!(0 <= index)) throw new Error('400:Invalid index')
@@ -388,7 +388,7 @@ createServer((req, res) => {
         finish(200, JSON.stringify(pubkey))
       }
       else {
-        const creditRoute = match.groups.creditOrPubkey == 'credit'
+        const creditRoute = match.groups.creditOrPubkey === 'credit'
         const logPath = creditRoute ? creditPath : `${addressPath}/${match.groups.creditOrPubkey}`
         if (!existsSync(logPath)) throw new Error('404:Unknown address or pubkey')
         const unfiltered = readJSONL(logPath)
@@ -400,10 +400,10 @@ createServer((req, res) => {
           x => commentRe.test(x.comment) && (!hash || x.transactionHash === hash) :
           x => typeRe.test(x.type)
         const logs = unfiltered.filter(filter)
-        if (match.groups.lengthOrLogs == 'length') {
+        if (match.groups.lengthOrLogs === 'length') {
           finish(200, logs.length.toString())
         }
-        else if (match.groups.lengthOrLogs == 'logs') {
+        else if (match.groups.lengthOrLogs === 'logs') {
           const start = url.searchParams.get('start')
           const endInt = parseInt(url.searchParams.get('end'))
           const end = Number.isNaN(endInt) ? logs.length : endInt
