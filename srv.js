@@ -28,14 +28,16 @@ ensureDirs()
 
 const pubkeyRe = `0x[0-9a-f]{96}`
 const routesRegExp = new RegExp(`^/(?:` +
-  `(?<admins>admins)|(?:` +
-  `(?<chainId>[0-9]+)/` +
+  `(?<admins>admins)|` +
+  `(?<declaration>declaration)|(?:` +
+  `(?<chainId>[0-9]+)/(?:` +
+    `(?<types>types)|` +
     `(?<address>${addressRe})/(?:` +
       `(?<nextindex>nextindex)|` +
       `(?<pubkey>pubkey)/(?<index>[0-9]+)|` +
       `(?<creditOrPubkey>(?:${pubkeyRe})|(?:credit))/(?<lengthOrLogs>(?:length)|(?:logs))|` +
-      `(?<acceptance>acceptance)` +
-  `)))$`
+      `(?<acceptance>acceptance)))` +
+  `))$`
 )
 
 const getNextIndex = addressPath =>
@@ -190,6 +192,16 @@ typesForPOST.set('CreditAccount',
   'uint256 tokenChainId,address tokenAddress,' +
   'bytes32 transactionHash,string comment'
 )
+
+const types = {}
+const addType = (args, struct) => {
+  types[struct] = args.split(',').map(s => {
+    const [type, name] = s.split(' ')
+    return {type, name}
+  })
+}
+typesForPUT.forEach(addType)
+typesForPOST.forEach(addType)
 
 const actorFifo = '/run/vrun-act.fifo'
 const refreshActor = () => writeFileSync(actorFifo, 'rf\n', {flag: 'a'})
@@ -347,9 +359,13 @@ createServer((req, res) => {
       if (!match) throw new Error('404:Unknown route')
       if (match.groups.admins == 'admins')
         return finish(200, JSON.stringify(adminAddresses))
+      if (match.groups.declaration == 'declaration')
+        return finish(200, JSON.stringify(requiredDeclaration))
       const chainId = parseInt(match.groups.chainId)
       const chain = chainIds[chainId]
       if (!chain) throw new Error('404:Unknown chainId')
+      if (match.groups.types == 'types')
+        return finish(200, JSON.stringify({types, domain: eip712Domain(chainId)}))
       const address = match.groups.address
       const addressPath = `${workDir}/${chainId}/${address}`
       const creditPath = `${workDir}/${chainId}/c/${address}`

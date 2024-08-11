@@ -43,6 +43,19 @@ with the earliest matching logs first.
 - `GET /admins`
 Returns: `[<address>...]` - list of Vrün administrator addresses.
 
+- `GET /declaration`
+Returns: string - the required declaration to sign for AcceptTermsOfService.
+
+- `GET /<chainId>/types`
+Returns:
+```
+{
+  "types": {<structName>: [{"name": <fieldName>, "type": <fieldType>}, ...], ...},
+  "domain": {"name": <string>, "version": <string>, "chainId": <string>}
+}
+```
+the types (and domain) of the EIP-712 structures accepted in the requests listed below.
+
 ## PUT/POST requests
 
 - `PUT /<chainId>/<address>`
