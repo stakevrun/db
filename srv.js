@@ -142,7 +142,8 @@ const normaliseData = (data, args) => {
   return normalised
 }
 
-const requiredDeclaration = 'I accept the terms of service specified at https://vrün.com/terms (with version identifier 20240229).'
+const requiredDeclaration = 'I accept the terms of service specified at https://vrün.com/terms ' +
+                            '(version: 20241008) (sha256sum: 9320acb47c90bf307a274187f45bdfa114a6d1c3ecd0a4d9d23dc80e5e2bffbf terms.md).'
 const adminAddresses = [
   '0xB0De8cB8Dcc8c5382c4b7F3E978b491140B2bC55', // gov.ramana.eth
   '0x0c39fC9A61AE74281ec06640bd2065E11751910A', // vrün fee server signer
