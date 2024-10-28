@@ -1,0 +1,181 @@
+---
+name: vrun-db
+
+volumes:
+  db-data:
+  act-fifo:
+
+networks:
+  proxy:
+  validator:
+    name: ${VALIDATOR_DOCKER_NETWORK:-${COMPOSE_PROJECT_NAME}_default}
+    external: true
+
+configs:
+  dot-env:
+    file: .env
+  vcs:
+    file: vcs.json
+
+services:
+  act-init-fifo:
+    container_name: ${COMPOSE_PROJECT_NAME}-act-init-fifo
+    image: alpine:3.20
+    env_file:
+      - .env
+    profiles:
+      - db
+      - act
+      - srv
+    volumes:
+      - type: volume
+        source: act-fifo
+        target: ${ACT_FIFO_DIR:-/run/db}
+    environment:
+      - ACT_FIFO_PATH=${ACT_FIFO_DIR}/${ACT_FIFO_FILE}
+    command: >
+      /bin/sh -c "if [ -e $${ACT_FIFO_PATH} ]; then
+        echo fifo socket exists!
+      else
+        echo Creating act fifo socket
+        mkfifo $${ACT_FIFO_PATH}
+        # chown to first created user so act and srv can both access it
+        chown 100:101 $${ACT_FIFO_PATH}
+      fi"
+
+  act:
+    container_name: ${COMPOSE_PROJECT_NAME}-act
+    user: ${ACT_USER:-db-act}:${ACT_USER:-db-act}
+    env_file:
+      - .env
+    build:
+      context: ${DOCKER_BUILD_PATH:-.}
+      dockerfile: act.Dockerfile
+      args:
+        - ACT_USER=${ACT_USER:-db-act}
+        - STATE_DIR=${STATE_DIR:-/mnt/crypt/db}
+      tags:
+        - vrun-db-act:local-dev
+    profiles:
+      - db
+      - act
+    networks:
+      - validator
+    volumes:
+      - type: volume
+        source: db-data
+        target: ${STATE_DIR:-/mnt/crypt/db}
+        read_only: true
+      - type: volume
+        source: act-fifo
+        target: ${ACT_FIFO_DIR:-/run/db}
+    configs:
+      - source: dot-env
+        target: /.env
+      - source: vcs
+        target: /usr/share/db/vcs.json
+    depends_on:
+      act-init-fifo:
+        condition: service_completed_successfully
+
+  act-update:
+    container_name: ${COMPOSE_PROJECT_NAME}-act-update
+    image: alpine:3.20
+    profiles:
+      - db
+      - act
+    volumes:
+      - type: volume
+        source: act-fifo
+        target: ${ACT_FIFO_DIR:-/run/db}
+    depends_on:
+      act-init-fifo:
+        condition: service_completed_successfully
+    command: >
+      /bin/sh -c "while true ; do
+          echo \"Running act refresh command.\"
+
+          # Opening file descriptors # 3 for reading and writing
+          # This is needed so that the fifo isn't blocking (writing to a fifo without an active reader will block)
+          exec 3<>${ACT_FIFO_DIR}/${ACT_FIFO_FILE}
+
+          # Write to file handle
+          echo \"rf\" >&3
+
+          # close fd # 3
+          exec 3>&-
+
+          echo \"Refresh sent. Sleeping for ${ACT_INTERVAL}m\"
+
+          sleep ${ACT_INTERVAL}m
+      done"
+
+  srv:
+    container_name: ${COMPOSE_PROJECT_NAME}-srv
+    user: ${SRV_USER:-db-srv}:${SRV_USER:-db-srv}
+    env_file:
+      - .env
+    build:
+      context: ${DOCKER_BUILD_PATH:-.}
+      dockerfile: srv.Dockerfile
+      args:
+        - SRV_USER=${SRV_USER:-db-srv}
+        - STATE_DIR=${STATE_DIR:-/mnt/crypt/db}
+      tags:
+        - vrun-db-srv:local-dev
+    profiles:
+      - db
+      - srv
+    ports:
+      - 8081:${SRV_LISTEN_PORT:-8880}
+    networks:
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.srv.rule=PathPrefix(`/`)"
+    volumes:
+      - type: volume
+        source: db-data
+        target: ${STATE_DIR:-/mnt/crypt/db}
+      - type: volume
+        source: act-fifo
+        target: ${ACT_FIFO_DIR:-/run/db}
+    configs:
+      - source: dot-env
+        target: /.env
+    healthcheck:
+      test: "wget --no-verbose --tries=1 --spider http://localhost:${SRV_LISTEN_PORT:-8880}/health || exit 1"
+      interval: 5s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      act-init-fifo:
+        condition: service_completed_successfully
+
+  reverse-proxy:
+    container_name: ${COMPOSE_PROJECT_NAME}-reverse-proxy
+    # The official v3 Traefik docker image
+    image: traefik:v3.2
+    # Enables the web UI and tells Traefik to listen to docker
+    command:
+      - --accessLog
+      - --log.level=INFO
+      - --api.insecure=true
+      - --serversTransport.insecureSkipVerify=true
+      - --providers.docker
+      - --providers.docker.network=${COMPOSE_PROJECT_NAME}_proxy
+      - --providers.docker.watch
+      - --providers.docker.exposedByDefault=false
+      - --entryPoints.web.address=:80
+    ports:
+      # The HTTP port
+      - "80:80"
+      # The Web UI (enabled by --api.insecure=true)
+      - "8080:8080"
+    volumes:
+      # So that Traefik can listen to the Docker events
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - proxy
+    profiles:
+      - db

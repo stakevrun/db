@@ -1,0 +1,9 @@
+#!/bin/sh
+
+while true
+do
+    inotifywait -e open ${ACT_FIFO_DIR}/${ACT_FIFO_FILE}
+    echo "Starting act."
+    ./act < ${ACT_FIFO_DIR}/${ACT_FIFO_FILE}
+    echo "Act done."
+done

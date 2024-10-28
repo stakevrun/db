@@ -102,6 +102,8 @@ export const ensureDirs = () => {
 
   gitCheck(['config', 'user.name'], workDir, 'vrün\n', 'wrong user for work repository')
   gitCheck(['config', 'user.email'], workDir, 'db@vrün.com\n', 'wrong email for work repository')
+
+  console.debug('ensureDirs finished, all dirs are set up')
 }
 
 const fastForwardRegExp = / \trefs\/heads\/main:refs\/heads\/main\t[0-9a-f]+\.\.[0-9a-f]+/

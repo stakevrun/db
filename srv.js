@@ -1,13 +1,17 @@
 import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRe, addressRegExp, readJSONL, pathsFromIndex,
          genesisForkVersion, genesisValidatorRoot, capellaForkVersion, prv } from './lib.js'
 import { mkdirSync, existsSync, readdirSync, writeFileSync } from 'node:fs'
+import fs from 'node:fs'
+import net from 'node:net'
 import { createServer } from 'node:http'
 import { sha256 } from "ethereum-cryptography/sha256.js";
 import { keccak256 } from "ethereum-cryptography/keccak.js";
 import { secp256k1 } from "ethereum-cryptography/secp256k1.js";
 import { hexToBytes, toHex, concatBytes } from "ethereum-cryptography/utils.js";
 
-const port = 8880
+const port = (process.env.SRV_LISTEN_PORT || 8880)
+
+let startup_check_done = false
 
 ensureDirs()
 
@@ -28,6 +32,7 @@ ensureDirs()
 
 const pubkeyRe = `0x[0-9a-f]{96}`
 const routesRegExp = new RegExp(`^/(?:` +
+  `(?<health>health)|` +
   `(?<admins>admins)|` +
   `(?<declaration>declaration)|(?:` +
   `(?<chainId>[0-9]+)/(?:` +
@@ -204,27 +209,56 @@ const addType = (args, struct) => {
 typesForPUT.forEach(addType)
 typesForPOST.forEach(addType)
 
-const actorFifo = '/run/vrun-act.fifo'
-const refreshActor = () => writeFileSync(actorFifo, 'rf\n', {flag: 'a'})
+const actorFifo = (process.env.ACT_FIFO_DIR || '/run') + '/' + (process.env.ACT_FIFO_FILE || 'vrun-act.fifo')
+const refreshActor = async () => {
+  if(existsSync(actorFifo)) {
+    console.debug("refreshActor() called.")
+
+    // Using net.Socket to write to our stream so we won't run into blocking issues:
+    // https://github.com/nodejs/node/issues/23220
+    // Read write flag is required even if you only need to write because otherwise you get ENXIO https://linux.die.net/man/4/fifo
+    // Non blocking flag is required to avoid blocking threads in the thread pool
+    const fileHandle = await fs.promises.open(actorFifo, fs.constants.O_RDWR | fs.constants.O_NONBLOCK);
+    // readable: false avoids buffering reads from the pipe in memory
+    const fifoStream = new net.Socket({ fd: fileHandle.fd, readable: false });
+
+    // Write to fifo
+    const shouldContinue = fifoStream.write('rf\n');
+    // Backpressure if buffer is full
+    if (!shouldContinue) {
+      console.log(`Can't continue, draining fifoStream...`)
+      await once(fifoStream, 'drain');
+    }
+
+    // Be aware that if you close without waiting for drain you will have errors on next write from the Socket class
+    await fileHandle.close();
+
+    console.debug("Refresh cmd sent.")
+  } else {
+    throw new Error("Can't access actor fifo.")
+  }
+}
 
 const verifyEIP712 = ({body, domainSeparator, typeMap}) => {
   if (!body) throw new Error('400:No data')
   const {type, data, signature, indices} = JSON.parse(body)
+
   if (!(typeMap.has(type))) throw new Error('400:Invalid type')
   const args = typeMap.get(type)
+
   let sig = signature.startsWith('0x') ? signature.slice(2, -2) : signature.slice(0, -2)
   const v = parseInt(`0x${signature.slice(-2)}`) - 27
   if (sig.length != 2 * 64) throw new Error(`400:Invalid signature length ${sig.length}`)
   try { sig = secp256k1.Signature.fromCompact(sig).addRecoveryBit(v) }
   catch (e) { throw new Error(`400:Invalid signature: ${e.message}`) }
+
   let message
   try {
-    message = concatBytes(
-      Buffer.from('\x19\x01'), domainSeparator,
-      hashStruct(data, `${type}(${args})`)
-    )
+    let struct = hashStruct(data, `${type}(${args})`)
+    message = concatBytes(Buffer.from('\x19\x01'), domainSeparator, struct)
   }
   catch (e) { throw new Error(`400:Invalid data: ${e.message}`) }
+
   const msgHash = keccak256(message)
   const sigPubkey = sig.recoverPublicKey(msgHash)
   const verified = secp256k1.verify(sig, msgHash, sigPubkey.toRawBytes())
@@ -358,6 +392,22 @@ createServer((req, res) => {
     if (['GET'].includes(req.method)) {
       const match = routesRegExp.exec(pathname)
       if (!match) throw new Error('404:Unknown route')
+      if (match.groups.health === 'health') {
+        if (!startup_check_done) {
+            console.log("Running startup check...")
+            // startup check not done, let's do some sanity checks
+            refreshActor().then(() => {
+              // No catches? good! we're good to go
+              startup_check_done = true
+              console.log("All good.")
+            })
+        }
+        // handle here in this case, don't need to spam logs for health enpoint by using 'finish'
+        body = JSON.stringify('Ready!')
+        resHeaders['Content-Length'] = Buffer.byteLength(body)
+        res.writeHead(200, resHeaders)
+        return res.end(body)
+      }
       if (match.groups.admins === 'admins')
         return finish(200, JSON.stringify(adminAddresses))
       if (match.groups.declaration === 'declaration')
@@ -596,7 +646,11 @@ createServer((req, res) => {
             }
             else throw new Error('400:Unknown instruction')
           }
-          if (typesToRefresh.has(type)) refreshActor()
+          if (typesToRefresh.has(type)) {
+            refreshActor().then(() => {
+              console.debug("Actor refresh success.")
+            })
+          }
         }
         catch (e) { handler(e) }
       })
