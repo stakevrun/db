@@ -1,5 +1,5 @@
 import { workDir, gitCheck, readJSONL, pathsFromIndex, chainIds, prv } from './lib.js'
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { randomInt } from 'node:crypto'
 
@@ -24,8 +24,8 @@ async function computeVcState(vcsConfig) {
     if (chainId in vcState) throw new Error(`Duplicate chainId ${chainId}`)
     const network = chainIds[chainId]
     if (!network) throw new Error(`Unknown chainId ${chainId}`)
-    const beaconHostPort = process.env[`${network.toUpperCase()}_BN`]
-    if (!beaconHostPort) throw new Error(`No beacon node URL environment variable for ${chainId}`)
+    const beaconHostPort = process.env[`BN_${network.toUpperCase()}`]
+    if (!beaconHostPort) throw new Error(`No beacon node URL environment variable for ${chainId},  BN_${network.toUpperCase()} missing`)
     const beaconUrl = `http://${beaconHostPort}`
     const validatorsByPubkey = {}
     vcState[chainId] = validatorsByPubkey
@@ -129,9 +129,15 @@ let vcsConfig
 let vcState
 let discrepancies
 
+const vcsConfigFile = (process.env.ACT_VCS_CONFIG || 'vcs.json')
 function ensureVcsConfig() {
-  if (!vcsConfig)
-    vcsConfig = JSON.parse(readFileSync('vcs.json'))
+  if (!vcsConfig) {
+    if(existsSync(vcsConfigFile)) {
+        vcsConfig = JSON.parse(readFileSync(vcsConfigFile))
+    } else {
+        throw new Error(`Could not find config file at: ${vcsConfigFile}`)
+    }
+  }
 }
 
 async function ensureVcState() {
