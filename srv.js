@@ -11,8 +11,6 @@ import { hexToBytes, toHex, concatBytes } from "ethereum-cryptography/utils.js";
 
 const port = (process.env.SRV_LISTEN_PORT || 8880)
 
-let startup_check_done = false
-
 ensureDirs()
 
 // srv repository database layout:
@@ -209,33 +207,44 @@ const addType = (args, struct) => {
 typesForPUT.forEach(addType)
 typesForPOST.forEach(addType)
 
+let refreshActorLock
+let refreshedActorOnce
 const actorFifo = (process.env.ACT_FIFO_DIR || '/run') + '/' + (process.env.ACT_FIFO_FILE || 'vrun-act.fifo')
 const refreshActor = async () => {
-  if(existsSync(actorFifo)) {
-    console.debug("refreshActor() called.")
+  if (refreshActorLock) return
+  refreshActorLock = true
+  try {
+    if (existsSync(actorFifo)) {
+      console.debug("refreshActor() called.")
 
-    // Using net.Socket to write to our stream so we won't run into blocking issues:
-    // https://github.com/nodejs/node/issues/23220
-    // Read write flag is required even if you only need to write because otherwise you get ENXIO https://linux.die.net/man/4/fifo
-    // Non blocking flag is required to avoid blocking threads in the thread pool
-    const fileHandle = await fs.promises.open(actorFifo, fs.constants.O_RDWR | fs.constants.O_NONBLOCK);
-    // readable: false avoids buffering reads from the pipe in memory
-    const fifoStream = new net.Socket({ fd: fileHandle.fd, readable: false });
+      // Using net.Socket to write to our stream so we won't run into blocking issues:
+      // https://github.com/nodejs/node/issues/23220
+      // Read write flag is required even if you only need to write because otherwise you get ENXIO https://linux.die.net/man/4/fifo
+      // Non blocking flag is required to avoid blocking threads in the thread pool
+      const fileHandle = await fs.promises.open(actorFifo, fs.constants.O_RDWR | fs.constants.O_NONBLOCK);
+      // readable: false avoids buffering reads from the pipe in memory
+      const fifoStream = new net.Socket({ fd: fileHandle.fd, readable: false });
 
-    // Write to fifo
-    const shouldContinue = fifoStream.write('rf\n');
-    // Backpressure if buffer is full
-    if (!shouldContinue) {
-      console.log(`Can't continue, draining fifoStream...`)
-      await once(fifoStream, 'drain');
+      // Write to fifo
+      const shouldContinue = fifoStream.write('rf\n');
+      // Backpressure if buffer is full
+      if (!shouldContinue) {
+        console.log(`Can't continue, draining fifoStream...`)
+        await once(fifoStream, 'drain');
+      }
+
+      // Be aware that if you close without waiting for drain you will have errors on next write from the Socket class
+      await fileHandle.close();
+
+      refreshedActorOnce = true
+
+      console.debug("Refresh cmd sent.")
+    } else {
+      throw new Error("Can't access actor fifo.")
     }
-
-    // Be aware that if you close without waiting for drain you will have errors on next write from the Socket class
-    await fileHandle.close();
-
-    console.debug("Refresh cmd sent.")
-  } else {
-    throw new Error("Can't access actor fifo.")
+  }
+  finally {
+    refreshActorLock = false
   }
 }
 
@@ -393,17 +402,16 @@ createServer((req, res) => {
       const match = routesRegExp.exec(pathname)
       if (!match) throw new Error('404:Unknown route')
       if (match.groups.health === 'health') {
-        if (!startup_check_done) {
-            console.log("Running startup check...")
-            // startup check not done, let's do some sanity checks
-            refreshActor().then(() => {
-              // No catches? good! we're good to go
-              startup_check_done = true
-              console.log("All good.")
-            })
+        let responseString = 'Pending...'
+        if (refreshedActorOnce) responseString = 'Ready!'
+        else {
+          console.log("Running startup check...")
+          refreshActor().then(() => {
+            console.log('Triggered act from health check.')
+            responseString = 'Ready!'
+          })
         }
-        // handle here in this case, don't need to spam logs for health enpoint by using 'finish'
-        body = JSON.stringify('Ready!')
+        body = JSON.stringify(responseString)
         resHeaders['Content-Length'] = Buffer.byteLength(body)
         res.writeHead(200, resHeaders)
         return res.end(body)
