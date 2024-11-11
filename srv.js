@@ -408,7 +408,7 @@ createServer((req, res) => {
           console.log("Running startup check...")
           refreshActor().then(() => {
             console.log('Triggered act from health check.')
-            responseString = 'Ready!'
+            if (refreshedActorOnce) responseString = 'Ready!'
           })
         }
         body = JSON.stringify(responseString)
