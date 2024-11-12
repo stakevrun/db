@@ -7,6 +7,7 @@ volumes:
 
 networks:
   proxy:
+  prv:
   validator:
     name: ${VALIDATOR_DOCKER_NETWORK:-${COMPOSE_PROJECT_NAME}_default}
     external: true
@@ -130,6 +131,7 @@ services:
       - 8081:${SRV_LISTEN_PORT:-8880}
     networks:
       - proxy
+      - prv
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.srv.rule=PathPrefix(`/`)"
@@ -151,6 +153,32 @@ services:
     depends_on:
       act-init-fifo:
         condition: service_completed_successfully
+
+  prv:
+    container_name: ${COMPOSE_PROJECT_NAME}-prv
+    user: ${PRV_USER:-db-prv}:${PRV_USER:-db-prv}
+    env_file:
+      - .env
+    build:
+      context: ${DOCKER_BUILD_PATH:-.}
+      dockerfile: prv.Dockerfile
+      args:
+        - PRV_USER=${PRV_USER:-db-prv}
+        - STATE_DIR=${STATE_DIR:-/mnt/crypt/db}
+      tags:
+        - vrun-db-prv:local-dev
+    profiles:
+      - db
+      - prv
+    networks:
+      - prv
+    volumes:
+      - type: volume
+        source: db-data
+        target: ${STATE_DIR:-/mnt/crypt/db}
+    configs:
+      - source: dot-env
+        target: /.env
 
   reverse-proxy:
     container_name: ${COMPOSE_PROJECT_NAME}-reverse-proxy
@@ -178,4 +206,4 @@ services:
     networks:
       - proxy
     profiles:
-      - db
+      - proxy
