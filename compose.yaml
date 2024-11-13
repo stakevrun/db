@@ -7,7 +7,9 @@ volumes:
 
 networks:
   proxy:
+    name: ${PROXY_DOCKER_NETWORK:-vrun-proxy}
   prv:
+    name: vrun-db-prv
   validator:
     name: ${VALIDATOR_DOCKER_NETWORK:-${COMPOSE_PROJECT_NAME}_default}
     external: true
@@ -191,7 +193,7 @@ services:
       - --api.insecure=true
       - --serversTransport.insecureSkipVerify=true
       - --providers.docker
-      - --providers.docker.network=${COMPOSE_PROJECT_NAME}_proxy
+      - --providers.docker.network=vrun-proxy
       - --providers.docker.watch
       - --providers.docker.exposedByDefault=false
       - --entryPoints.web.address=:80
