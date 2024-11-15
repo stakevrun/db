@@ -353,6 +353,33 @@ const computePresignedExit = ({validatorIndex, epoch, chainId, address, path}) =
   return {signature, message: {epoch, validator_index: validatorIndex}}
 }
 
+const validateAddressAcceptance = (chainId, address) => {
+  const acceptanceDir = `${workDir}/${chainId}/a`
+  const acceptancePath = `${acceptanceDir}/${address}`
+  if (existsSync(acceptancePath)) {
+    const {timestamp, declaration, signature} = readJSONL(acceptancePath).at(-1)
+    if (declaration === requiredDeclaration) {
+      return {acceptancePath, acceptance: {timestamp, declaration, signature}}
+    }
+  }
+
+  return {acceptancePath, acceptance: undefined}
+}
+
+const getAddressCreditPath = (chainId, address, createDirIfnotExists) => {
+  const creditDir = `${workDir}/${chainId}/c`
+  const creditPath = `${creditDir}/${address}`
+  const existing = existsSync(creditDir)
+  if (!existing && createDirIfnotExists) {
+    console.debug(`Credit dir does not exist yet creating...`)
+    mkdirSync(creditDir, {recursive: true})
+  } else if(!existing) {
+    return undefined
+  }
+
+  return creditPath
+}
+
 const allowedMethods = 'GET,POST,PUT'
 
 createServer((req, res) => {
@@ -424,10 +451,9 @@ createServer((req, res) => {
         finish(200, (+getNextIndex(addressPath)).toString())
       }
       else if (match.groups.acceptance === 'acceptance') {
-        const acceptancePath = `${workDir}/${chainId}/a/${address}`
-        if (!existsSync(acceptancePath)) throw new Error(`404:Acceptance missing`)
-        const {timestamp, declaration, signature} = readJSONL(acceptancePath).at(-1)
-        finish(200, JSON.stringify({timestamp, declaration, signature}))
+        const {acceptancePath, acceptance} = validateAddressAcceptance(chainId, address);
+        if(!acceptance) throw new Error(`404:Acceptance missing`)
+        finish(200, JSON.stringify(acceptance))
       }
       else if (match.groups.pubkey === 'pubkey') {
         if (!existsSync(addressPath)) throw new Error('404:Unknown address')
@@ -439,10 +465,14 @@ createServer((req, res) => {
         finish(200, JSON.stringify(pubkey))
       }
       else {
+        const {acceptancePath, acceptance} = validateAddressAcceptance(chainId, address);
+        if(!acceptance) {
+          throw new Error('400:Unknown address or pubkey')
+        }
+
         const creditRoute = match.groups.creditOrPubkey === 'credit'
-        const logPath = creditRoute ? creditPath : `${addressPath}/${match.groups.creditOrPubkey}`
-        if (!existsSync(logPath)) throw new Error('404:Unknown address or pubkey')
-        const unfiltered = readJSONL(logPath)
+        const logPath = creditRoute ? getAddressCreditPath(chainId, address, true) : `${addressPath}/${match.groups.creditOrPubkey}`
+        const unfiltered = existsSync(logPath) ? readJSONL(logPath) : []
         const makeRe = x => new RegExp(url.searchParams.get(x) || '', 'i')
         const typeRe = makeRe('type')
         const commentRe = makeRe('comment')
@@ -451,6 +481,7 @@ createServer((req, res) => {
           x => commentRe.test(x.comment) && (!hash || x.transactionHash === hash) :
           x => typeRe.test(x.type)
         const logs = unfiltered.filter(filter)
+
         if (match.groups.lengthOrLogs === 'length') {
           finish(200, logs.length.toString())
         }
@@ -491,15 +522,12 @@ createServer((req, res) => {
           if (index === 'batch' && (!data.pubkeys || !indices || data.pubkeys.length !== indices.length))
             throw new Error(`400:Invalid indices/pubkeys`)
           const addressPath = `${workDir}/${chainId}/${address}`
-          const acceptanceDir = `${workDir}/${chainId}/a`
-          const acceptancePath = `${acceptanceDir}/${address}`
-          const acceptanceExists = existsSync(acceptancePath)
-          const creditDir = `${workDir}/${chainId}/c`
-          const creditPath = `${creditDir}/${address}`
-          const {declaration: currentDeclaration} = acceptanceExists && readJSONL(acceptancePath).at(-1)
-          if (currentDeclaration !== requiredDeclaration &&
-              !(['AcceptTermsOfService', 'CreditAccount'].includes(type)))
+
+          const {acceptancePath, acceptance} = validateAddressAcceptance(chainId, address);
+          if(!acceptance && !(['AcceptTermsOfService', 'CreditAccount'].includes(type))) {
             throw new Error('400:Acceptance of terms of service missing')
+          }
+
           if (type == 'AddValidators') {
             const firstIndex = parseInt(data.firstIndex)
             const nextIndex = getNextIndex(addressPath)
@@ -563,8 +591,8 @@ createServer((req, res) => {
           else if (type == 'AcceptTermsOfService') {
             if (data.declaration !== requiredDeclaration)
               throw new Error('400:Invalid declaration')
-            const existing = currentDeclaration === data.declaration
-            if (!acceptanceExists) mkdirSync(acceptanceDir, {recursive: true})
+            if (!acceptance) mkdirSync(acceptanceDir, {recursive: true})
+            const existing = acceptance && (acceptance.declaration === data.declaration)
             if (!existing) {
               const timestamp = Math.floor(Date.now() / 1000).toString()
               addLogLine(acceptancePath, {type, timestamp, ...data, signature})
@@ -573,8 +601,8 @@ createServer((req, res) => {
             finish(statusCode, '')
           }
           else if (type == 'CreditAccount') {
+            const creditPath = getAddressCreditPath(chainId, address, true)
             const existing = existsSync(creditPath)
-            if (!existing) mkdirSync(creditDir, {recursive: true})
             const logs = existing ? readJSONL(creditPath) : []
             const lastLog = logs.at(-1)
             if (lastLog && !(parseInt(lastLog.timestamp) <= parseInt(data.timestamp))) throw new Error(`400:Timestamp too early for ${address}`)
