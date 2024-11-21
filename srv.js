@@ -11,6 +11,33 @@ import { hexToBytes, toHex, concatBytes } from "ethereum-cryptography/utils.js";
 
 const port = (process.env.SRV_LISTEN_PORT || 8880)
 
+const curDateTime = () => Intl.DateTimeFormat(
+  'en-GB',
+  { dateStyle: 'short', timeStyle: 'medium' }
+).format(Date.now())
+
+// Override stdout and stderr message output with time and type prefix
+const log_level = (process.env.LOG_LEVEL || 'warn').toLowerCase();
+['debug', 'info', 'warn', 'error'].map((methodName) => {
+  const originalLoggingMethod = console[methodName];
+  console[methodName] = (firstArgument, ...otherArguments) => {
+    if (
+      (methodName === 'error') ||
+      (methodName === 'warn' && ['warn', 'info', 'debug'].some((level) => level === log_level)) ||
+      (methodName === 'info' && ['info', 'debug'].some((level) => level === log_level)) ||
+      (methodName === 'debug' && log_level === 'debug')
+    ) {
+      const prefix = `${curDateTime()} | ${methodName.toUpperCase()} | `;
+      if (typeof firstArgument === 'string') {
+        originalLoggingMethod(prefix + firstArgument, ...otherArguments);
+      } else {
+        originalLoggingMethod(prefix, firstArgument, ...otherArguments);
+      }
+    }
+  };
+});
+process.setUncaughtExceptionCaptureCallback((e) => console.error(e.message + '\n' + e.stack))
+
 ensureDirs()
 
 // srv repository database layout:
@@ -149,14 +176,14 @@ const requiredDeclaration = 'I accept the terms of service specified at https://
                             '(version: 20241008) (sha256sum: 9320acb47c90bf307a274187f45bdfa114a6d1c3ecd0a4d9d23dc80e5e2bffbf terms.md).'
 
 const adminAddresses = [
-  '0xB0De8cB8Dcc8c5382c4b7F3E978b491140B2bC55', // gov.ramana.eth
-].map(x => x.toLowerCase())
+  '0xB0De8cB8Dcc8c5382c4b7F3E978b491140B2bC55'.toLowerCase(), // gov.ramana.eth
+]
 // Add vrün fee server signer address provided through environment if set
 if(process.env.FEE_SIGNER_ADDRESS) {
   console.debug(`Adding fee signing address ${process.env.FEE_SIGNER_ADDRESS} to admin addresses list.`)
   adminAddresses.push(process.env.FEE_SIGNER_ADDRESS.toLowerCase())
 } else {
-  console.warn("WARN: no FEE_SIGNER_ADDRESS provided, the fee service will not be added to the admin addresses list.")
+  console.warn(`No FEE_SIGNER_ADDRESS provided, the fee service will not be added to the admin addresses list.`)
 }
 
 const typesForPUT = new Map()
@@ -236,7 +263,7 @@ const refreshActor = async () => {
       const shouldContinue = fifoStream.write('rf\n');
       // Backpressure if buffer is full
       if (!shouldContinue) {
-        console.log(`Can't continue, draining fifoStream...`)
+        console.warn("Can't continue, draining fifoStream...")
         await once(fifoStream, 'drain');
       }
 
@@ -256,8 +283,12 @@ const refreshActor = async () => {
 }
 
 const verifyEIP712 = ({body, domainSeparator, typeMap}) => {
+  console.debug(`verifyEIP712 for domainSeparator [${domainSeparator}]`)
+
   if (!body) throw new Error('400:No data')
   const {type, data, signature, indices} = JSON.parse(body)
+
+  console.debug({type, data, signature, indices})
 
   if (!(typeMap.has(type))) throw new Error('400:Invalid type')
   const args = typeMap.get(type)
@@ -286,6 +317,9 @@ const verifyEIP712 = ({body, domainSeparator, typeMap}) => {
 }
 
 const addLogLine = (logPath, log) => {
+  console.debug(`Adding new log line to path [${logPath}]`)
+  console.debug(log)
+
   if (!logPath.startsWith(`${workDir}/`))
     throw new Error(`500:Unexpected workDir mismatch`)
   const repoLogPath = logPath.slice(workDir.length + 1)
@@ -423,6 +457,7 @@ const allowedMethods = 'GET,POST,PUT'
 
 createServer((req, res) => {
   const resHeaders = { }
+
   function handler(e) {
     let [code, body] = e.message.split(':', 2)
     if (body) body += e.message.slice(code.length + 1 + body.length)
@@ -445,12 +480,14 @@ createServer((req, res) => {
     }
     console.warn(`${req.method} ${req.url} -> ${statusCode}: ${body || ''}`)
   }
+
   function finish(statusCode, body) {
     resHeaders['Content-Length'] = Buffer.byteLength(body)
     res.writeHead(statusCode, resHeaders)
     res.end(body)
-    console.log(`${req.method} ${req.url} -> ${statusCode}: ${body}`)
+    console.info(`${req.method} ${req.url} -> ${statusCode}: ${body}`)
   }
+
   try {
     resHeaders['Content-Type'] = 'application/json'
     const url = new URL(req.url, `http://${req.headers.host}`)
@@ -462,9 +499,9 @@ createServer((req, res) => {
         let responseString = 'Pending...'
         if (refreshedActorOnce) responseString = 'Ready!'
         else {
-          console.log("Running startup check...")
+          console.info("Running startup check...")
           refreshActor().then(() => {
-            console.log('Triggered act from health check.')
+            console.debug('Triggered act from health check.')
             if (refreshedActorOnce) responseString = 'Ready!'
           })
         }
@@ -503,6 +540,7 @@ createServer((req, res) => {
         finish(200, JSON.stringify(pubkey))
       }
       else {
+        console.debug('handling GET for other route')
         const {acceptancePath, acceptance} = validateAddressAcceptance(chainId, address);
         if(!acceptance) {
           throw new Error('400:Unknown address or pubkey')
@@ -521,9 +559,11 @@ createServer((req, res) => {
         const logs = unfiltered.filter(filter)
 
         if (match.groups.lengthOrLogs === 'length') {
+          console.debug("Returning logs count")
           finish(200, logs.length.toString())
         }
         else if (match.groups.lengthOrLogs === 'logs') {
+          console.debug("Returning filtered logs")
           const start = url.searchParams.get('start')
           const endInt = parseInt(url.searchParams.get('end'))
           const end = Number.isNaN(endInt) ? logs.length : endInt
@@ -630,7 +670,9 @@ createServer((req, res) => {
           else if (type == 'AcceptTermsOfService') {
             if (data.declaration !== requiredDeclaration)
               throw new Error('400:Invalid declaration')
+
             if (!acceptance) mkdirSync(`${workDir}/${chainId}/a`, {recursive: true})
+
             const existing = acceptance && (acceptance.declaration === data.declaration)
             if (!existing) {
               const timestamp = Math.floor(Date.now() / 1000).toString()
