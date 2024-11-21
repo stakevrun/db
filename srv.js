@@ -84,8 +84,9 @@ const MAX_STRING_LENGTH = 128
 
 const encodeData = (data, encodedType) => {
   if (encodedType == 'string') {
-    if (typeof data != 'string') throw new Error('not a string')
-    if (data.length > MAX_STRING_LENGTH) throw new Error('string too long')
+    if (typeof data != 'string') {
+      throw new Error('not a string')
+    }
     return keccak256(Buffer.from(data))
   }
   else if (encodedType == 'bytes') {
@@ -114,7 +115,13 @@ const encodeData = (data, encodedType) => {
   else if (encodedType.endsWith('[]')) {
     const type = encodedType.slice(0, -2)
     const bytes = new Uint8Array(data.length * 32)
-    data.forEach((x, i) => bytes.set(encodeData(x, type), i * 32))
+    data.forEach((x, i) => {
+      if (type == 'string' && x.length > MAX_STRING_LENGTH) {
+        console.warn(`String value too long for encode data value [${x}]`)
+        throw new Error('string too long')
+      }
+      bytes.set(encodeData(x, type), i * 32)
+    })
     return keccak256(bytes)
   }
   else {
@@ -123,8 +130,13 @@ const encodeData = (data, encodedType) => {
     const args = match.groups.args.split(',').map(arg => arg.split(' '))
     const encodedData = new Uint8Array(args.length * 32)
     // only works when structs are not nested
-    for (const [i, [type, key]] of args.entries())
+    for (const [i, [type, key]] of args.entries()) {
+      if (type == 'string' && data[key].length > MAX_STRING_LENGTH) {
+        console.warn(`String value too long for encode data [${key}] with value [${data[key]}]`)
+        throw new Error('string too long')
+      }
       encodedData.set(encodeData(data[key], type), i * 32)
+    }
     return encodedData
   }
 }
