@@ -45,7 +45,7 @@ createServer((stream) => {
       const trimmedLine = line.trim();
       if (trimmedLine) inputLines.push(trimmedLine); // Ignore empty lines
     });
-    handleRequest()
+    stream.write(handleRequest());
     stream.end()
   })
 
@@ -94,7 +94,7 @@ createServer((stream) => {
 
     if (command == 'generate') {
       if (existsSync(seedPath))
-        console.log('exists')
+        return 'exists';
       else {
         mkdirSync(chainPath, {recursive: true})
         writeFileSync(seedPath, randomSeed(), {flag: 'wx'})
@@ -107,7 +107,7 @@ createServer((stream) => {
           'unexpected diff adding seed'
         )
         gitPush(address, workDir)
-        console.log('created')
+        return 'created';
       }
     }
     else {
@@ -117,13 +117,13 @@ createServer((stream) => {
       switch (command) {
         case 'pubkey': {
           const pk = pubkeyFromPrivkey(sk)
-          console.log(`0x${toHex(pk)}`)
+          return `0x${toHex(pk)}`;
           break
         }
         case 'keystore': {
           const pubkey = pubkeyFromPrivkey(sk)
           const password = readLine('KEYPASS')
-          console.log(JSON.stringify(generateKeystore({sk, path, pubkey, password})))
+          return JSON.stringify(generateKeystore({sk, path, pubkey, password}));
           break
         }
         case 'sign': {
@@ -132,7 +132,7 @@ createServer((stream) => {
           const message = Buffer.from(messageHex.slice(2), 'hex')
           const htfEthereum = {DST: 'BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_'}
           const sig = bls12_381.sign(message, sk, htfEthereum)
-          console.log(`0x${toHex(sig)}`)
+          return `0x${toHex(sig)}`;
           break
         }
         default:
