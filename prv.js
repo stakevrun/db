@@ -1,13 +1,18 @@
 import { errorPrefix } from './lib.js'
-process.setUncaughtExceptionCaptureCallback((e) => console.log(`${errorPrefix}${e.message}`))
+process.setUncaughtExceptionCaptureCallback((e) => console.error(`${errorPrefix}${e.message}\n` + e.stack));
 
 import { randomSeed, privkeyFromPath, pubkeyFromPrivkey, generateKeystore, toHex } from './sig.js'
 import { bls12_381 } from '@noble/curves/bls12-381'
-import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRegExp } from './lib.js'
+import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRegExp, logFunction } from './lib.js'
 import { mkdirSync, existsSync, writeFileSync, readFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 
-ensureDirs()
+// Override stdout and stderr message output with time and type prefix
+for (const level of ['debug', 'info', 'warn', 'error']) logFunction(level);
+
+console.info("Starting server");
+
+ensureDirs();
 
 // prv repository database layout:
 // ${chainId}/${address} : 32 bytes (no encoding)
@@ -31,7 +36,7 @@ ensureDirs()
 const [HOST, PORT] = process.env.PRV_HOST.split(':')
 
 createServer((stream) => {
-  console.log("Got new connection")
+  console.debug("Got new connection");
 
   const inputLines = []
   let buffer = ''
@@ -50,15 +55,15 @@ createServer((stream) => {
   })
 
   stream.on('error', function (e) {
-    console.log(`Got error ${e}`)
+    console.error(`Got error ${e}`);
     stream.write(e)
-    console.log("Closing connection")
+    console.error("Closing connection");
     stream.end()
   })
 
   stream.on('close', function (had_error) {
     if(had_error) {
-      console.log("Connection closed unexpectedly.")
+      console.error("Connection closed unexpectedly.");
     }
     stream.end()
   })
@@ -67,6 +72,7 @@ createServer((stream) => {
     if (inputLines.length < 1) {
       throw new Error(`readLine called for ${variable}, but no more lines to read!`)
     }
+    console.debug(`read line for ${variable}`);
     const prefix = `${variable} = `
     const line = inputLines.shift()
     if (!(line && line.startsWith(prefix))) {
@@ -78,8 +84,8 @@ createServer((stream) => {
   function handleRequest() {
     const chainId = readLine('CHAINID')
     if (!(chainId in chainIds)) {
-      console.log(`Could not find chainId ${chainId} in chainIds list:`)
-      console.log(chainIds)
+      console.error(`Could not find chainId ${chainId} in chainIds list:`);
+      console.error(chainIds);
       throw new Error('invalid chainId')
     }
 
@@ -93,9 +99,12 @@ createServer((stream) => {
     const command = readLine('COMMAND')
 
     if (command == 'generate') {
-      if (existsSync(seedPath))
+      console.debug('Handling [generate] request.');
+      if (existsSync(seedPath)) {
+        console.debug(`Seed path [${seedPath}] already exists.`);
         return 'exists';
-      else {
+      } else {
+        console.info('The seedPath doesn\'t exist yet, creating it now.');
         mkdirSync(chainPath, {recursive: true})
         writeFileSync(seedPath, randomSeed(), {flag: 'wx'})
         gitCheck(['add', seedPath], workDir, '', 'failed to add seed')
@@ -107,31 +116,40 @@ createServer((stream) => {
           'unexpected diff adding seed'
         )
         gitPush(address, workDir)
+        console.info(`Seed path [${seedPath}] created.`);
         return 'created';
       }
     }
     else {
       const seed = readFileSync(seedPath)
       const path = readLine('KEYPATH')
+      console.debug(privkeyFromPath);
       const sk = privkeyFromPath(seed, path)
       switch (command) {
         case 'pubkey': {
+          console.debug('Handling [pubkey] request.');
           const pk = pubkeyFromPrivkey(sk)
+          console.debug('Found pubkey from private key: ', `0x${toHex(pk)}`);
           return `0x${toHex(pk)}`;
           break
         }
         case 'keystore': {
+          console.debug('Handling [keystore] request.');
           const pubkey = pubkeyFromPrivkey(sk)
           const password = readLine('KEYPASS')
           return JSON.stringify(generateKeystore({sk, path, pubkey, password}));
           break
         }
         case 'sign': {
+          console.debug('Handling [sign] request.');
           const messageHex = readLine('MESSAGE')
+          console.debug(messageHex);
           if (!messageHex.startsWith('0x')) throw new Error('invalid message')
           const message = Buffer.from(messageHex.slice(2), 'hex')
           const htfEthereum = {DST: 'BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_'}
+          console.debug(`Signing ${message} with ${sk} and ${htfEthereum}.`);
           const sig = bls12_381.sign(message, sk, htfEthereum)
+          console.debug(`Got sig ${sig}.`);
           return `0x${toHex(sig)}`;
           break
         }

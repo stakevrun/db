@@ -11,21 +11,30 @@ const sha256 = (m) => createHash('sha256').update(m).digest()
 const r = 52435875175126190479447740508185965837690552500527637822603658699938581184513n
 
 function OS2IP(a) {
+  console.debug(`OS2IP called for ${a}`);
   let result = 0n
   let m = 1n
+
   for (const x of a.toReversed()) {
     result += BigInt(x) * m
     m *= 256n
   }
+
+  console.debug(`Returning result ${result}`);
   return result
 }
 
 function I2OSP(n, l) {
+  console.debug("I2OSP called");
   const result = new Uint8Array(l)
+  console.debug(`result from new Uint8Array(l) = ${result}`);
+  console.debug(`starting while for ${l}`);
   while (l) {
     result[--l] = parseInt(n % 256n)
     n /= 256n
   }
+  console.debug("returning result:");
+  console.debug(result);
   return result
 }
 
@@ -45,7 +54,9 @@ function secretKeyFromSeed(seed) {
 }
 
 function lamportFromParent(sk, index) {
+  console.debug(`Calling I2OSP for salt with n=${BigInt(index)} and l=4`);
   const salt = I2OSP(BigInt(index), 4)
+  console.debug(`Calling I2OSP for IKM with n=${sk} and l=32`);
   const IKM = I2OSP(sk, 32)
   const lamport = []
   lamport.push(hkdfSync('sha256', IKM, salt, '', 32 * 255))
@@ -65,6 +76,7 @@ const deriveChild = (sk, index) =>
   secretKeyFromSeed(lamportFromParent(sk, index))
 
 export const privkeyFromPath = (seed, path) => {
+  console.debug(`privkeyFromPath [${path}] called with seed [${seed}].`);
   const components = path.split('/')
   if (components[0] != 'm') throw new Error('unrooted path')
   let key = secretKeyFromSeed(seed)
@@ -74,6 +86,7 @@ export const privkeyFromPath = (seed, path) => {
     if (!(0 <= index && index < 2 ** 32)) throw new Error('invalid index')
     key = deriveChild(key, index)
   }
+  console.debug("Returning key.");
   return key
 }
 
@@ -195,9 +208,11 @@ const toAffine = ({x, y, z}) => {
 // Three flag bits are added to the raw x coordinate, as described here
 // https://github.com/zcash/librustzcash/blob/6e0364cd42a2b3d2b958a54771ef51a8db79dd29/pairing/src/bls12_381/README.md#serialization
 export const pubkeyFromPrivkey = (sk) => {
+  console.debug("pubkeyFromPrivKey called.");
   const {x, y} = toAffine(mulp(sk, g1))
   const bytes = I2OSP(x, 48)
   bytes[0] |= ((y * 2n) / order) ? 0b10100000 : 0b10000000
+  console.debug(`Found pubkey [${bytes}].`);
   return bytes
 }
 
