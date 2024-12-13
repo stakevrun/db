@@ -1,5 +1,7 @@
+process.setUncaughtExceptionCaptureCallback((e) => console.error(e.message + '\n' + e.stack));
+
 import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRe, addressRegExp, readJSONL, pathsFromIndex,
-         genesisForkVersion, genesisValidatorRoot, capellaForkVersion, prv } from './lib.js'
+         genesisForkVersion, genesisValidatorRoot, capellaForkVersion, prv, logFunction } from './lib.js'
 import { mkdirSync, existsSync, readdirSync, writeFileSync } from 'node:fs'
 import fs from 'node:fs'
 import net from 'node:net'
@@ -11,34 +13,12 @@ import { hexToBytes, toHex, concatBytes } from "ethereum-cryptography/utils.js";
 
 const port = (process.env.SRV_LISTEN_PORT || 8880)
 
-const curDateTime = () => Intl.DateTimeFormat(
-  'en-GB',
-  { dateStyle: 'short', timeStyle: 'medium' }
-).format(Date.now())
-
 // Override stdout and stderr message output with time and type prefix
-const log_level = (process.env.LOG_LEVEL || 'warn').toLowerCase();
-['debug', 'info', 'warn', 'error'].map((methodName) => {
-  const originalLoggingMethod = console[methodName];
-  console[methodName] = (firstArgument, ...otherArguments) => {
-    if (
-      (methodName === 'error') ||
-      (methodName === 'warn' && ['warn', 'info', 'debug'].some((level) => level === log_level)) ||
-      (methodName === 'info' && ['info', 'debug'].some((level) => level === log_level)) ||
-      (methodName === 'debug' && log_level === 'debug')
-    ) {
-      const prefix = `${curDateTime()} | ${methodName.toUpperCase()} | `;
-      if (typeof firstArgument === 'string') {
-        originalLoggingMethod(prefix + firstArgument, ...otherArguments);
-      } else {
-        originalLoggingMethod(prefix, firstArgument, ...otherArguments);
-      }
-    }
-  };
-});
-process.setUncaughtExceptionCaptureCallback((e) => console.error(e.message + '\n' + e.stack))
+for (const level of ['debug', 'info', 'warn', 'error']) logFunction(level);
 
-ensureDirs()
+console.info("Starting server");
+
+ensureDirs();
 
 // srv repository database layout:
 // ${chainId}/a/${address} : JSON lines of signed acceptances of the terms of service
@@ -400,6 +380,7 @@ const computeDepositData = ({amountGwei, pubkey, withdrawalCredentials, chainId,
     signatureBytes.slice(64), zero32
   ])
 
+  console.debug("depositDataRoot params:", "pubkey[", pubkey, "] withdrawalCredentials[", withdrawalCredentials, "] amountGwei[", amountGwei, "] signature[", signature, "]");
   const depositDataRootBytes = merkleRoot(
     [pubkeyRoot, wcBytes, amountRoot, signatureRoot]
   )
@@ -548,7 +529,9 @@ createServer((req, res) => {
         if (!(0 <= index)) throw new Error('400:Invalid index')
         const {signing: path} = pathsFromIndex(index)
         const pubkey = prv('pubkey', {chainId, address, path})
+        console.debug(`Found pubkey for path [${path}]: [${pubkey}]`);
         if (!existsSync(`${addressPath}/${pubkey}`)) throw new Error(`400:Unknown index`)
+        console.debug(`Returning pubkey.`);
         finish(200, JSON.stringify(pubkey))
       }
       else {
@@ -606,6 +589,7 @@ createServer((req, res) => {
           const typeMap = req.method == 'PUT' ? typesForPUT : typesForPOST
           const domainSeparator = domainSeparators.get(chainId)
           const {type, data, address: sigAddress, signature, indices} = verifyEIP712({domainSeparator, body, typeMap})
+          console.debug("verifyEIP712 result: ", type, data, sigAddress, signature, indices);
           if ((index === 'credit') !== (type === 'CreditAccount')) throw new Error(`400:Credit route type mismatch`)
           const validSigAddresses = index === 'credit' ? adminAddresses : [address]
           if (!validSigAddresses.includes(sigAddress)) throw new Error(`400:Address mismatch: ${sigAddress}`)
@@ -619,11 +603,14 @@ createServer((req, res) => {
           }
 
           if (type == 'AddValidators') {
+            console.debug("Add Validators");
             const firstIndex = parseInt(data.firstIndex)
             const nextIndex = getNextIndex(addressPath)
             if (!(firstIndex <= nextIndex)) throw new Error(`400:First index unknown or not next`)
             if (nextIndex === null) {
+              console.debug(`NextIndex is ${nextIndex}, generating a new key for chainId [${chainId}] and address [${address}]`);
               const result = prv('generate', {chainId, address})
+              console.debug("Result from prv:", result);
               if (result != 'created') throw new Error(`500:Unexpected generate result`)
               mkdirSync(addressPath, {recursive: true})
             }
@@ -631,6 +618,7 @@ createServer((req, res) => {
             const depositDataByPubkey = {}
             const timestamp = validateTimestamp(data.timestamp)
 
+            console.log("Composing deposit data for provided pubkeys.");
             let index = firstIndex
             for (const withdrawalAddress of data.withdrawalAddresses) {
               const existing = index < nextIndex
@@ -661,10 +649,16 @@ createServer((req, res) => {
                 newLogsForPubkey.push({type, timestamp: timestamp.toString(), [key]: value})
               }
             }
+            console.debug("Deposit data result:", depositDataByPubkey);
+
+            console.debug("Adding new logs:");
+            console.debug(newLogs);
             for (const [logPath, logs] of Object.entries(newLogs)) {
               writeFileSync(logPath, logs.map(log => `${JSON.stringify(log)}\n`).join(''), {flag: 'a'})
               gitCheck(['add', logPath], workDir, '', `failed to add logs`)
             }
+
+            console.debug("Writing changes to git.");
             const lineRegExp = new RegExp(`[45]\\s+0\\s+${chainId}/${address}/(?<pubkey>${pubkeyRe})`)
             gitCheck(['diff', '--staged', '--numstat'], workDir,
               output => {

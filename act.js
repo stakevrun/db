@@ -1,7 +1,10 @@
-import { workDir, gitCheck, readJSONL, pathsFromIndex, chainIds, prv } from './lib.js'
+import { workDir, gitCheck, readJSONL, pathsFromIndex, chainIds, prv, logFunction } from './lib.js'
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { randomInt } from 'node:crypto'
+
+// Override stdout and stderr message output with time and type prefix
+for (const level of ['debug', 'info', 'warn', 'error']) logFunction(level);
 
 const authTokens = new Map()
 
@@ -154,7 +157,7 @@ async function ensureDiscrepancies() {
 
 async function fixDiscrepancy(i) {
   const d = discrepancies[i]
-  console.log(`Fixing discrepancy ${i}: ${JSON.stringify(d)}`)
+  console.info(`Fixing discrepancy ${i}: ${JSON.stringify(d)}`)
   const headers = {
     'Authorization': `Bearer ${authTokens.get(d.url)}`,
     'Content-Type': 'application/json'
@@ -165,7 +168,7 @@ async function fixDiscrepancy(i) {
       if (d.vc)
         console.warn(`${logPrefix}In VC but not srv, ignoring...`)
       else {
-        console.log(`${logPrefix}Importing keystore into VC`)
+        console.info(`${logPrefix}Importing keystore into VC`)
         await ensureVcState()
         const vcs = vcsConfig[d.chainId] || []
         const validatorsByPubkey = vcState[d.chainId] || {}
@@ -198,7 +201,7 @@ async function fixDiscrepancy(i) {
       }
       break
     case 'enabled': {
-      console.log(`${logPrefix}Setting VC enabled to ${d.srv}`)
+      console.info(`${logPrefix}Setting VC enabled to ${d.srv}`)
       const path = `${d.url}/lighthouse/validators/${d.pubkey}`
       await checkStatus(200,
         await fetch(path,
@@ -207,7 +210,7 @@ async function fixDiscrepancy(i) {
       break
     }
     case 'feeRecipient': {
-      console.log(`${logPrefix}Changing VC feeRecipient from ${d.vc} to ${d.srv}`)
+      console.info(`${logPrefix}Changing VC feeRecipient from ${d.vc} to ${d.srv}`)
       const path = `${d.url}/eth/v1/validator/${d.pubkey}/feerecipient`
       await checkStatus(202,
         await fetch(path,
@@ -216,7 +219,7 @@ async function fixDiscrepancy(i) {
       break
     }
     case 'graffiti': {
-      console.log(`${logPrefix}Changing VC graffiti from ${d.vc} to ${d.srv}`)
+      console.info(`${logPrefix}Changing VC graffiti from ${d.vc} to ${d.srv}`)
       const path = `${d.url}/eth/v1/validator/${d.pubkey}/graffiti`
       await checkStatus(202,
         await fetch(path,

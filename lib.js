@@ -69,6 +69,7 @@ const bareDir = `${stateDir}/bare`
 export const workDir = `${stateDir}/work`
 
 export const gitCheck = (args, cwd, expectedOutput, msg) => {
+  console.debug(`gitCheck ${args} ${cwd}`);
   const res = spawnSync('git', args, {cwd})
   const checkOutput = typeof expectedOutput == 'string' ? (s => s === expectedOutput) : expectedOutput
   if (!(res.status === 0 && checkOutput(String(res.stdout))))
@@ -76,6 +77,8 @@ export const gitCheck = (args, cwd, expectedOutput, msg) => {
 }
 
 export const ensureDirs = () => {
+  console.debug("ensureDirs called.");
+
   if (!existsSync(bareDir)) {
     gitCheck(['init', '--quiet', '--bare', '--initial-branch=main', 'bare'], stateDir, '', 'failed to create bare repository')
     gitCheck(['config', 'receive.denyNonFastForwards', 'true'], bareDir, '', 'failed to set denyNonFastForwards')
@@ -103,11 +106,13 @@ export const ensureDirs = () => {
   gitCheck(['config', 'user.name'], workDir, 'vrün\n', 'wrong user for work repository')
   gitCheck(['config', 'user.email'], workDir, 'db@vrün.com\n', 'wrong email for work repository')
 
-  console.debug('ensureDirs finished, all dirs are set up')
+  console.debug('ensureDirs finished, all dirs are set up');
 }
 
 const fastForwardRegExp = / \trefs\/heads\/main:refs\/heads\/main\t[0-9a-f]+\.\.[0-9a-f]+/
 export const gitPush = (msg, cwd) => {
+  console.debug("gitPush called.");
+
   gitCheck(['commit', '--quiet', '--message', msg], cwd, '', 'failed to commit')
   gitCheck(['push', '--porcelain'], cwd,
     output => {
@@ -122,3 +127,29 @@ export const gitPush = (msg, cwd) => {
     'failed to push'
   )
 }
+
+// Log function to override existing console.<log type> functions
+// allowing us to add a prefix with a datetime and severity level.
+export const curDateTimeFormatted = () => {
+  return new Date().toISOString();
+};
+const log_level = (process.env.LOG_LEVEL || 'warn').toLowerCase();
+
+export const logFunction = (methodName) => {
+  const originalLoggingMethod = console[methodName];
+  console[methodName] = (firstArgument, ...otherArguments) => {
+    if (
+      (methodName === 'error') ||
+      (methodName === 'warn' && ['warn', 'info', 'debug'].some((level) => level === log_level)) ||
+      (methodName === 'info' && ['info', 'debug'].some((level) => level === log_level)) ||
+      (methodName === 'debug' && log_level === 'debug')
+    ) {
+      const prefix = `${curDateTimeFormatted()} | ${methodName.toUpperCase()} | `;
+      if (typeof firstArgument === 'string') {
+        originalLoggingMethod(prefix + firstArgument, ...otherArguments);
+      } else {
+        originalLoggingMethod(prefix, firstArgument, ...otherArguments);
+      }
+    }
+  };
+};
