@@ -3,6 +3,7 @@ name: vrun-db
 
 volumes:
   db-data:
+  prv-data:
   act-fifo:
 
 networks:
@@ -55,7 +56,7 @@ services:
       context: ${DOCKER_BUILD_PATH:-.}
       dockerfile: act.Dockerfile
       args:
-        - ACT_USER=${ACT_USER:-db-act}
+        - USER=${ACT_USER:-db-act}
         - STATE_DIR=${STATE_DIR:-/mnt/crypt/db}
       tags:
         - vrun-db-act:local-dev
@@ -122,7 +123,7 @@ services:
       context: ${DOCKER_BUILD_PATH:-.}
       dockerfile: srv.Dockerfile
       args:
-        - SRV_USER=${SRV_USER:-db-srv}
+        - USER=${SRV_USER:-db-srv}
         - STATE_DIR=${STATE_DIR:-/mnt/crypt/db}
       tags:
         - vrun-db-srv:local-dev
@@ -165,7 +166,7 @@ services:
       context: ${DOCKER_BUILD_PATH:-.}
       dockerfile: prv.Dockerfile
       args:
-        - PRV_USER=${PRV_USER:-db-prv}
+        - USER=${PRV_USER:-db-prv}
         - STATE_DIR=${STATE_DIR:-/mnt/crypt/db}
       tags:
         - vrun-db-prv:local-dev
@@ -176,7 +177,7 @@ services:
       - prv
     volumes:
       - type: volume
-        source: db-data
+        source: prv-data
         target: ${STATE_DIR:-/mnt/crypt/db}
     configs:
       - source: dot-env
