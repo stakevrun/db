@@ -29,6 +29,9 @@ COPY --from=build /usr/lib/libgcc_s.so.1 /usr/lib/libgcc_s.so.1
 
 COPY ./scripts/docker-entrypoint.sh.act /usr/local/bin/docker-entrypoint.sh
 
+# Set env var so we can check in our code if we're running in docker or not
+ENV IS_DOCKER=1
+
 RUN apk add -U --no-cache git inotify-tools && \
     addgroup -S ${USER} && \
     adduser -S ${USER} -G ${USER} -h ${HOME_DIR} && \
