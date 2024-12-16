@@ -38,6 +38,7 @@ export const pathsFromIndex = index => {
 }
 
 export const errorPrefix = 'error: '
+
 export const prv = (command, {chainId, address, path, password}, input) => {
   const lines = []
   lines.push(`CHAINID = ${chainId}`)
@@ -49,19 +50,28 @@ export const prv = (command, {chainId, address, path, password}, input) => {
 
   const [HOST, PORT] = process.env.PRV_HOST.split(':')
 
-  const res = spawnSync('node', ['sck.js'], {
+  // Gather connect info based on IS_DOCKER var.
+  // If we're running in docker, the js files have been installed as a single binary file and `node` does not exist.
+  const connect_app = process.env.IS_DOCKER ? 'nc' : 'node';
+  const connect_params = process.env.IS_DOCKER ?  ['-w', 1, HOST, PORT] : ['sck.js'];
+  console.debug(`lib | prv | Called with ${connect_app} using params:`, connect_params);
+  const res = spawnSync(connect_app, connect_params, {
     input: lines.join('\n'),
     encoding: 'utf8',
     env: {HOST, PORT}
   })
+  console.debug(`lib | prv | Got result: [${res.stdout}]`);
 
-  const hasError = res.stdout.startsWith(errorPrefix)
-  if (res.stderr.length === 0 && !hasError)
-    return res.stdout.trimEnd()
-  else if (hasError)
-    throw new Error(`500:${res.stdout.slice(errorPrefix.length)}`)
-  else
-    throw new Error(`500:prv failed: errors ${res.stderr}, stdout '${res.stdout}'`)
+  const hasError = res.stdout.startsWith(errorPrefix);
+  if (res.stderr.length === 0 && !hasError) {
+    return res.stdout.trimEnd();
+  } else if (hasError) {
+    console.debug(`lib | prv | Returning error from stdout ${res.stdout}`);
+    throw new Error(`500:${res.stdout.slice(errorPrefix.length)}`);
+  } else {
+    console.debug(`lib | prv | Returning error from stderr ${res.stderr}`);
+    throw new Error(`500:prv failed: errors ${res.stderr}, stdout '${res.stdout}'`);
+  }
 }
 
 const stateDir = process.env.STATE_DIR
@@ -69,7 +79,7 @@ const bareDir = `${stateDir}/bare`
 export const workDir = `${stateDir}/work`
 
 export const gitCheck = (args, cwd, expectedOutput, msg) => {
-  console.debug(`gitCheck ${args} ${cwd}`);
+  console.debug(`lib | gitCheck | Called with: ${args} ${cwd}`);
   const res = spawnSync('git', args, {cwd})
   const checkOutput = typeof expectedOutput == 'string' ? (s => s === expectedOutput) : expectedOutput
   if (!(res.status === 0 && checkOutput(String(res.stdout))))
@@ -77,7 +87,7 @@ export const gitCheck = (args, cwd, expectedOutput, msg) => {
 }
 
 export const ensureDirs = () => {
-  console.debug("ensureDirs called.");
+  console.debug("lib | ensureDirs | Called.");
 
   if (!existsSync(bareDir)) {
     gitCheck(['init', '--quiet', '--bare', '--initial-branch=main', 'bare'], stateDir, '', 'failed to create bare repository')
@@ -106,12 +116,12 @@ export const ensureDirs = () => {
   gitCheck(['config', 'user.name'], workDir, 'vrün\n', 'wrong user for work repository')
   gitCheck(['config', 'user.email'], workDir, 'db@vrün.com\n', 'wrong email for work repository')
 
-  console.debug('ensureDirs finished, all dirs are set up');
+  console.debug('lib | ensureDirs | Finished, all dirs are set up.');
 }
 
 const fastForwardRegExp = / \trefs\/heads\/main:refs\/heads\/main\t[0-9a-f]+\.\.[0-9a-f]+/
 export const gitPush = (msg, cwd) => {
-  console.debug("gitPush called.");
+  console.debug("lib | gitPush | Called.");
 
   gitCheck(['commit', '--quiet', '--message', msg], cwd, '', 'failed to commit')
   gitCheck(['push', '--porcelain'], cwd,
