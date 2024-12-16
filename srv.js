@@ -111,7 +111,7 @@ const encodeData = (data, encodedType) => {
     const encodedData = new Uint8Array(args.length * 32)
     // only works when structs are not nested
     for (const [i, [type, key]] of args.entries()) {
-      if (type == 'string' && data[key].length > MAX_STRING_LENGTH) {
+      if (type == 'string' && key !== 'declaration' && data[key].length > MAX_STRING_LENGTH) {
         console.warn(`String value too long for encode data [${key}] with value [${data[key]}]`)
         throw new Error('string too long')
       }
@@ -356,22 +356,33 @@ const computeDomain = (type, forkVersionPrefix, genesisValidatorRoot) => {
 }
 
 const computeDepositData = ({amountGwei, pubkey, withdrawalCredentials, chainId, address, path}) => {
+  console.debug("pubkey:", pubkey);
   const pubkeyBytes = hexToBytes(pubkey)
   const pubkeyBytesPadded = new Uint8Array(64)
   pubkeyBytesPadded.set(pubkeyBytes)
+  console.debug("withdrawalCredentials:", toHex(withdrawalCredentials));
   const wcBytes = typeof withdrawalCredentials == 'string' ?
     hexToBytes(withdrawalCredentials) : withdrawalCredentials
-  const amountRoot = uint64Root(amountGwei)
+  console.debug("wcBytes:", toHex(wcBytes));
+  let amountRoot = uint64Root(BigInt(amountGwei))
+  console.debug("amountRoot with BigInt(amountGwei):", BigInt(amountGwei), toHex(amountRoot));
+  amountRoot = uint64Root(parseInt(amountGwei))
+  console.debug("amountRoot with parseInt(amountGwei):", parseInt(amountGwei), toHex(amountRoot));
+  amountRoot = uint64Root(amountGwei)
+  console.debug("amountRoot with amountGwei:", amountGwei, toHex(amountRoot));
   const pubkeyRoot = merkleRoot(
     [pubkeyBytesPadded.slice(0, 32), pubkeyBytesPadded.slice(32)]
   )
+  console.debug("pubkeyRoot:", toHex(pubkeyRoot));
   const zero32 = new Uint8Array(32)
   const depositMessageRoot = merkleRoot(
     [pubkeyRoot, wcBytes, amountRoot, zero32]
   )
+  console.debug("depositMessageRoot:", toHex(depositMessageRoot));
 
   const domain = computeDomain(3, genesisForkVersion[chainId], zero32)
   const signingRoot = merkleRoot([depositMessageRoot, domain])
+  console.debug("signingRoot:", toHex(signingRoot));
   const signature = prv('sign', {chainId, address, path}, `0x${toHex(signingRoot)}`)
   const signatureBytes = hexToBytes(signature)
 
@@ -498,7 +509,7 @@ createServer((req, res) => {
             if (refreshedActorOnce) responseString = 'Ready!'
           })
         }
-        body = JSON.stringify(responseString)
+        const body = JSON.stringify(responseString);
         resHeaders['Content-Length'] = Buffer.byteLength(body)
         res.writeHead(200, resHeaders)
         return res.end(body)
@@ -589,13 +600,20 @@ createServer((req, res) => {
           const typeMap = req.method == 'PUT' ? typesForPUT : typesForPOST
           const domainSeparator = domainSeparators.get(chainId)
           const {type, data, address: sigAddress, signature, indices} = verifyEIP712({domainSeparator, body, typeMap})
+
           console.debug("verifyEIP712 result: ", type, data, sigAddress, signature, indices);
-          if ((index === 'credit') !== (type === 'CreditAccount')) throw new Error(`400:Credit route type mismatch`)
+          if ((index === 'credit') !== (type === 'CreditAccount')) {
+            throw new Error(`400:Credit route type mismatch`);
+          }
           const validSigAddresses = index === 'credit' ? adminAddresses : [address]
-          if (!validSigAddresses.includes(sigAddress)) throw new Error(`400:Address mismatch: ${sigAddress}`)
-          if (index === 'batch' && (!data.pubkeys || !indices || data.pubkeys.length !== indices.length))
-            throw new Error(`400:Invalid indices/pubkeys`)
+          if (!validSigAddresses.includes(sigAddress)) {
+            throw new Error(`400:Address mismatch: ${sigAddress}`);
+          }
+          if (index === 'batch' && (!data.pubkeys || !indices || data.pubkeys.length !== indices.length)) {
+            throw new Error(`400:Invalid indices/pubkeys`);
+          }
           const addressPath = `${workDir}/${chainId}/${address}`
+
 
           const {acceptancePath, acceptance} = validateAddressAcceptance(chainId, address);
           if(!acceptance && !(['AcceptTermsOfService', 'CreditAccount'].includes(type))) {
@@ -610,25 +628,28 @@ createServer((req, res) => {
             if (nextIndex === null) {
               console.debug(`NextIndex is ${nextIndex}, generating a new key for chainId [${chainId}] and address [${address}]`);
               const result = prv('generate', {chainId, address})
-              console.debug("Result from prv:", result);
-              if (result != 'created') throw new Error(`500:Unexpected generate result`)
+              console.debug(result)
+              if (result != 'created' && result != 'exists') throw new Error(`500:Unexpected generate result`)
               mkdirSync(addressPath, {recursive: true})
             }
             const newLogs = {}
             const depositDataByPubkey = {}
             const timestamp = validateTimestamp(data.timestamp)
 
-            console.log("Composing deposit data for provided pubkeys.");
+            console.debug("Composing deposit data for provided pubkeys.");
+            // Should index go up for each withdrawalAddress? It currently doesn't..
             let index = firstIndex
             for (const withdrawalAddress of data.withdrawalAddresses) {
+              //-- This can be moved out of the for loop if index stays the same???
               const existing = index < nextIndex
+              const logs = existing ? readJSONL(logPath) : [];
               const {signing: path} = pathsFromIndex(index)
               const pubkey = prv('pubkey', {chainId, address, path})
               const logPath = `${addressPath}/${pubkey}`
-              const newLogsForPubkey = []
-              newLogs[logPath] = newLogsForPubkey
-              if (!existing)
-                newLogsForPubkey.push({type: 'CreateKey', timestamp: timestamp.toString(), index: index.toString()})
+
+              validateTSNotTooEarly(timestamp, logs);
+              //--
+
               const withdrawalCredentials = new Uint8Array(32)
               withdrawalCredentials[0] = 1
               withdrawalCredentials.set(hexToBytes(withdrawalAddress), 12)
@@ -636,9 +657,12 @@ createServer((req, res) => {
                 amountGwei: data.amountGwei, pubkey, withdrawalCredentials, chainId, address, path
               })
               depositDataByPubkey[pubkey] = depositData
-              const logs = existing ? readJSONL(logPath) : []
-              validateTSNotTooEarly(timestamp, logs)
 
+              const newLogsForPubkey = [];
+              newLogs[logPath] = newLogsForPubkey;
+              if (!existing) {
+                newLogsForPubkey.push({type: 'CreateKey', timestamp: timestamp.toString(), index: index.toString()});
+              }
               for (const [type, value] of [['SetFeeRecipient', data.feeRecipient],
                                            ['SetGraffiti', data.graffiti],
                                            ['SetEnabled', true]]) {
@@ -666,7 +690,7 @@ createServer((req, res) => {
                 if (lines.length != data.withdrawalAddresses.length) return false
                 const pubkeys = lines.map(line => lineRegExp.exec(line)?.groups.pubkey)
                 return (Object.keys(depositDataByPubkey).every(x => pubkeys.includes(x)) &&
-                        pubkeys.every(x => x in depositDataByPubkey))
+                  pubkeys.every(x => x in depositDataByPubkey))
               },
               `unexpected diff adding logs`
             )
