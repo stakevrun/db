@@ -65,6 +65,7 @@ services:
       - act
     networks:
       - validator
+      - prv
     volumes:
       - type: volume
         source: db-data
@@ -138,6 +139,12 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.srv.rule=PathPrefix(`/`)"
+      - "traefik.http.middlewares.corsheader.headers.accesscontrolallowmethods=GET,POST,PUT,OPTIONS"
+      - "traefik.http.middlewares.corsheader.headers.accesscontrolallowheaders=*"
+      - "traefik.http.middlewares.corsheader.headers.accesscontrolalloworiginlist=http://localhost:3000"
+      - "traefik.http.middlewares.corsheader.headers.accesscontrolmaxage=100"
+      - "traefik.http.middlewares.corsheader.headers.addvaryheader=true"
+      - "traefik.http.routers.srv.middlewares=corsheader"
     volumes:
       - type: volume
         source: db-data
@@ -154,8 +161,8 @@ services:
       timeout: 5s
       retries: 3
     depends_on:
-      act-init-fifo:
-        condition: service_completed_successfully
+      prv:
+        condition: service_started
 
   prv:
     container_name: ${COMPOSE_PROJECT_NAME}-prv
@@ -182,6 +189,9 @@ services:
     configs:
       - source: dot-env
         target: /.env
+    depends_on:
+      act:
+        condition: service_started
 
   reverse-proxy:
     container_name: ${COMPOSE_PROJECT_NAME}-reverse-proxy
