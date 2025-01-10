@@ -56,8 +56,8 @@ createServer((stream) => {
 
   stream.on('error', function (e) {
     console.error(`Got error ${e}`);
-    stream.write(e)
-    console.error("Closing connection");
+    stream.write(`${errorPrefix}${e.message}`);
+    console.warn("Closing connection");
     stream.end()
   })
 
@@ -147,7 +147,7 @@ createServer((stream) => {
           if (!messageHex.startsWith('0x')) throw new Error('invalid message')
           const message = Buffer.from(messageHex.slice(2), 'hex')
           const htfEthereum = {DST: 'BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_'}
-          console.debug(`Signing ${message} with ${sk} and ${htfEthereum}.`);
+          console.debug(`Signing ${messageHex} with ${sk} and`, htfEthereum);
           const sig = bls12_381.sign(message, sk, htfEthereum)
           console.debug(`Got sig ${sig}.`);
           return `0x${toHex(sig)}`;
