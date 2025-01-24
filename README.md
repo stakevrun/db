@@ -172,8 +172,9 @@ where `depositDataRoot` is a 0x-prefixed hexstring of 32 bytes, and
 
 - `GetPresignedExit` Returns: a <a href=https://ethereum.github.io/keymanager-APIs/?urls.primaryName=dev#/Voluntary%20Exit/signVoluntaryExit>SignedVoluntaryExitResponse</a>.
 
-- `AddValidators` Returns: `{<pubkey>: {depositDataRoot: string, signature: string}, ...}`,
-that is, a response similar to `GetDepositData` for each pubkey.
+- `AddValidators` Returns: `{<withdrawalAddress>: {pubkey: string, depositDataRoot: string, signature: string}, ...}`,
+  that is, a response similar to `GetDepositData` for each withdrawal address,
+  also including the corresponding validator pubkey.
 
 Any issues with processing the body (wrong content-type, bad signature,
 malformed instruction, invalid instruction) will get a 40x response with a

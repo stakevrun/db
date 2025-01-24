@@ -633,7 +633,7 @@ createServer((req, res) => {
               mkdirSync(addressPath, {recursive: true})
             }
             const newLogs = {}
-            const depositDataByPubkey = {}
+            const depositDataByWithdrawalAddress = {}
             const timestamp = validateTimestamp(data.timestamp)
 
             console.debug("Composing deposit data for provided pubkeys.");
@@ -653,7 +653,7 @@ createServer((req, res) => {
               const depositData = computeDepositData({
                 amountGwei: data.amountGwei, pubkey, withdrawalCredentials, chainId, address, path
               })
-              depositDataByPubkey[pubkey] = depositData
+              depositDataByWithdrawalAddress[withdrawalAddress] = {pubkey, ...depositData}
 
               const newLogsForPubkey = [];
               newLogs[logPath] = newLogsForPubkey;
@@ -671,7 +671,7 @@ createServer((req, res) => {
               }
               index += 1
             }
-            console.debug("Deposit data result:", depositDataByPubkey);
+            console.debug("Deposit data result:", depositDataByWithdrawalAddress);
 
             console.debug("Adding new logs:");
             console.debug(newLogs);
@@ -687,13 +687,14 @@ createServer((req, res) => {
                 const lines = output.trimEnd().split('\n')
                 if (lines.length != data.withdrawalAddresses.length) return false
                 const pubkeys = lines.map(line => lineRegExp.exec(line)?.groups.pubkey)
-                return (Object.keys(depositDataByPubkey).every(x => pubkeys.includes(x)) &&
-                  pubkeys.every(x => x in depositDataByPubkey))
+                const outputPubkeys = Object.values(depositDataByWithdrawalAddress).map(({pubkey}) => pubkey)
+                return outputPubkeys.every(pubkey => pubkeys.includes(pubkey)) &&
+                       pubkeys.every(pubkey => outputPubkeys.includes(pubkey))
               },
               `unexpected diff adding logs`
             )
             gitPush(type, workDir)
-            finish(201, JSON.stringify(depositDataByPubkey))
+            finish(201, JSON.stringify(depositDataByWithdrawalAddress))
           }
           else if (type == 'AcceptTermsOfService') {
             if (data.declaration !== requiredDeclaration)
