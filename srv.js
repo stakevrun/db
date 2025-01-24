@@ -626,7 +626,7 @@ createServer((req, res) => {
             const nextIndex = getNextIndex(addressPath)
             if (!(firstIndex <= nextIndex)) throw new Error(`400:First index unknown or not next`)
             if (nextIndex === null) {
-              console.debug(`NextIndex is ${nextIndex}, generating a new key for chainId [${chainId}] and address [${address}]`);
+              console.debug(`NextIndex is ${nextIndex}, generating seed for chainId [${chainId}] and address [${address}]`);
               const result = prv('generate', {chainId, address})
               console.debug(result)
               if (result != 'created' && result != 'exists') throw new Error(`500:Unexpected generate result`)
