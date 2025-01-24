@@ -637,10 +637,8 @@ createServer((req, res) => {
             const timestamp = validateTimestamp(data.timestamp)
 
             console.debug("Composing deposit data for provided pubkeys.");
-            // Should index go up for each withdrawalAddress? It currently doesn't..
             let index = firstIndex
             for (const withdrawalAddress of data.withdrawalAddresses) {
-              //-- This can be moved out of the for loop if index stays the same???
               const existing = index < nextIndex
               const logs = existing ? readJSONL(logPath) : [];
               const {signing: path} = pathsFromIndex(index)
@@ -648,7 +646,6 @@ createServer((req, res) => {
               const logPath = `${addressPath}/${pubkey}`
 
               validateTSNotTooEarly(timestamp, logs);
-              //--
 
               const withdrawalCredentials = new Uint8Array(32)
               withdrawalCredentials[0] = 1
@@ -672,6 +669,7 @@ createServer((req, res) => {
                 if (lastLog?.[key] === value) throw new Error(`400:Setting unchanged`)
                 newLogsForPubkey.push({type, timestamp: timestamp.toString(), [key]: value})
               }
+              index += 1
             }
             console.debug("Deposit data result:", depositDataByPubkey);
 
