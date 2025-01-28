@@ -358,9 +358,10 @@ const computeDomain = (type, forkVersionPrefix, genesisValidatorRoot) => {
 const computeDepositData = ({amountGwei, pubkey, withdrawalCredentials, chainId, address, path}) => {
   console.debug("pubkey:", pubkey);
   const pubkeyBytes = hexToBytes(pubkey)
+  console.debug("pubkeyBytes:", pubkeyBytes);
   const pubkeyBytesPadded = new Uint8Array(64)
   pubkeyBytesPadded.set(pubkeyBytes)
-  console.debug("withdrawalCredentials:", toHex(withdrawalCredentials));
+  console.debug("withdrawalCredentials:", withdrawalCredentials);
   const wcBytes = typeof withdrawalCredentials == 'string' ?
     hexToBytes(withdrawalCredentials) : withdrawalCredentials
   console.debug("wcBytes:", toHex(wcBytes));
