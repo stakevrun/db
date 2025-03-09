@@ -1,0 +1,86 @@
+name: Create and publish Docker images
+
+on:
+  push:
+    branches:
+      - 'main'
+  pull_request:
+    branches:
+      - 'main'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        image: ["act", "srv", "prv"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Check changes
+        uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            code:
+              - '${{ matrix.image }}.js'
+              - 'lib.js'
+              - 'sig.js'
+              - 'package.json'
+              - 'package-lock.json'
+
+      - name: Read package.json
+        uses: zvonimirsun/read-package-version-actions@v2
+        if: steps.changes.outputs.code == 'true'
+        id: package-version
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+        if: steps.changes.outputs.code == 'true'
+        with:
+          platforms: 'amd64,arm64'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        if: steps.changes.outputs.code == 'true'
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        if: steps.changes.outputs.code == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        if: steps.changes.outputs.code == 'true'
+        with:
+          images: ghcr.io/${{ github.repository }}/${{ matrix.image }}
+          tags: |
+            type=edge,branch=main
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}},value=${{steps.package-version.outputs.version}}
+            type=semver,pattern={{major}}.{{minor}},value=${{steps.package-version.outputs.version}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        if: steps.changes.outputs.code == 'true'
+        with:
+          context: .
+          file: ${{ matrix.image }}.Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
