@@ -1,7 +1,7 @@
 process.setUncaughtExceptionCaptureCallback((e) => console.error(e.message + '\n' + e.stack));
 
 import { ensureDirs, gitCheck, gitPush, workDir, chainIds, addressRe, addressRegExp, readJSONL, pathsFromIndex,
-         genesisForkVersion, genesisValidatorRoot, capellaForkVersion, prv, logFunction } from './lib.js'
+  genesisForkVersion, genesisValidatorRoot, capellaForkVersion, prv, logFunction } from './lib.js'
 import { mkdirSync, existsSync, readdirSync, writeFileSync } from 'node:fs'
 import fs from 'node:fs'
 import net from 'node:net'
@@ -661,9 +661,11 @@ createServer((req, res) => {
               if (!existing) {
                 newLogsForPubkey.push({type: 'CreateKey', timestamp: timestamp.toString(), index: index.toString()});
               }
-              for (const [type, value] of [['SetFeeRecipient', data.feeRecipient],
-                                           ['SetGraffiti', data.graffiti],
-                                           ['SetEnabled', true]]) {
+              for (const [type, value] of [
+                ['SetFeeRecipient', data.feeRecipient],
+                ['SetGraffiti', data.graffiti],
+                ['SetEnabled', true]
+              ]) {
                 const keyCap = type.slice(3)
                 const key = `${keyCap.slice(0, 1).toLowerCase()}${keyCap.slice(1)}`
                 const lastLog = logs.toReversed().find(({type: logType}) => logType == type)
@@ -689,8 +691,7 @@ createServer((req, res) => {
                 if (lines.length != data.withdrawalAddresses.length) return false
                 const pubkeys = lines.map(line => lineRegExp.exec(line)?.groups.pubkey)
                 const outputPubkeys = Object.values(depositDataByWithdrawalAddress).map(({pubkey}) => pubkey)
-                return outputPubkeys.every(pubkey => pubkeys.includes(pubkey)) &&
-                       pubkeys.every(pubkey => outputPubkeys.includes(pubkey))
+                return outputPubkeys.every(pubkey => pubkeys.includes(pubkey)) && pubkeys.every(pubkey => outputPubkeys.includes(pubkey))
               },
               `unexpected diff adding logs`
             )
