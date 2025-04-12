@@ -15,7 +15,7 @@ Example:
 `vcs.json`
 ```json
 {
-    "17000": [
+    "560048": [
         {
             "url": "http://validator:5063",
             "authToken": "[Token can be found in ~/.rocketpool/data/validators/lighthouse/validators/api-token.txt]"
@@ -89,7 +89,7 @@ Make sure the `vrun-db-srv` container is showing `(healthy)` in the STATUS
 ```bash
 docker exec -it vrun-db-srv sh
 export ADDRESS="<your wallet address in lower case>"
-echo -e "CHAINID = 17000\nADDRESS = ${ADDRESS}\nCOMMAND = pubkey" | nc -w 1 prv 5000
+echo -e "CHAINID = 560048\nADDRESS = ${ADDRESS}\nCOMMAND = pubkey" | nc -w 1 prv 5000
 ```
 
 **Jump into the srv docker and trigger a refresh for act**
